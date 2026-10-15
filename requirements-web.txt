@@ -1,4 +1,6 @@
 -r requirements.txt
 Flask>=3.1,<4
 Flask-WTF>=1.2,<2
+pypdf>=6.20.1,<7
+defusedxml>=0.7,<1
 gunicorn>=23,<24; sys_platform != 'win32'

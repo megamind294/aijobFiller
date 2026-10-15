@@ -8,6 +8,7 @@ from flask import current_app, flash, redirect, render_template, request
 from .core import read_json, validate_profile, write_json
 from .sources import DiscoveryBudget, discover
 from .web_jobs import action_guard, validate_job
+from .resume_uploads import load_resume
 
 
 def validate_profile_shape(profile):
@@ -98,7 +99,8 @@ def register_settings(app):
                 flash('Another action is already running. Try again shortly.' if isinstance(exc, RuntimeError) else str(exc), 'error')
                 candidate = current_profile()
         return render_template('profile.html', profile=candidate,
-                               submitted=request.form if request.method == 'POST' else None)
+                               submitted=request.form if request.method == 'POST' else None,
+                               uploaded_resume=load_resume(home))
 
     @app.route('/sources', methods=['GET', 'POST'])
     def sources():

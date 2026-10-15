@@ -13,6 +13,7 @@ from .core import Store, read_json, validate_profile
 from .web_auth import init_auth
 from .web_jobs import register_jobs
 from .web_settings import register_settings
+from .resume_uploads import register_resume_uploads
 
 
 def create_app(config=None):
@@ -107,4 +108,5 @@ def create_app(config=None):
 
     register_jobs(app)
     register_settings(app)
+    register_resume_uploads(app)
     return app
