@@ -1,0 +1,7 @@
+{
+  "origin": "http://127.0.0.1:8765",
+  "fields": [],
+  "submit_selector": "button[type=submit]",
+  "success_selector": "#receipt",
+  "success_text": "Application received"
+}

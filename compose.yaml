@@ -1,0 +1,18 @@
+services:
+  worker:
+    build: .
+    restart: unless-stopped
+    init: true
+    volumes:
+      - jobpilot-data:/data
+    command: ["watch", "--interval", "1200", "--prepare"]
+    stop_grace_period: 45s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+volumes:
+  jobpilot-data:

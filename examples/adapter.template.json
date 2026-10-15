@@ -1,0 +1,34 @@
+{
+  "origin": "https://careers.example.com",
+  "fields": [
+    {
+      "selector": "input[name=firstName]",
+      "profile_key": "personal.first_name",
+      "kind": "text"
+    },
+    {
+      "selector": "input[name=lastName]",
+      "profile_key": "personal.last_name",
+      "kind": "text"
+    },
+    {
+      "selector": "input[type=file][name=resume]",
+      "kind": "resume"
+    },
+    {
+      "selector": "select[name=noticePeriod]",
+      "profile_key": "custom.notice_period",
+      "kind": "select"
+    }
+  ],
+  "submit_selector": "button[type=submit]",
+  "success_selector": ".application-confirmation",
+  "success_text": "Thank you for applying",
+  "otp": {
+    "sender": "recruiting@example.com",
+    "recipient": "you@example.com",
+    "subject_contains": "verification code",
+    "selector": "input[name=verificationCode]",
+    "pattern": "(?<!\\d)(\\d{6})(?!\\d)"
+  }
+}

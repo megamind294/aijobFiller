@@ -1,0 +1,10 @@
+[
+  {
+    "url": "http://127.0.0.1:8765/",
+    "title": "React Developer (LOCAL DEMO ONLY)",
+    "company": "Local Demo Company",
+    "location": "Krakow, Poland",
+    "description": "Local demonstration application. React, TypeScript, HTML, CSS, REST API integration and accessible forms. No real employer or application.",
+    "source": "local-demo"
+  }
+]
