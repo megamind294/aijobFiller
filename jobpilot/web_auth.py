@@ -26,7 +26,8 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not authenticated():
-            session.clear()
+            if session.get('auth_version'):
+                session.clear()
             return redirect(url_for('login'))
         return view(*args, **kwargs)
     return wrapped
@@ -49,10 +50,14 @@ def init_auth(app):
 
     @app.before_request
     def require_session():
-        if request.endpoint in ('login', 'static'):
+        if request.endpoint in ('login', 'static', 'favicon'):
             return None
         if not authenticated():
-            session.clear()
+            # Anonymous sessions contain the login form's CSRF token. A
+            # favicon, another tab, or a protected-page redirect must not
+            # invalidate that still-open form. Clear only stale auth sessions.
+            if session.get('auth_version'):
+                session.clear()
             return redirect(url_for('login'))
 
     @app.route('/login', methods=['GET', 'POST'])

@@ -51,3 +51,55 @@ class WebAuthTests(WebCase):
         self.login()
         self.app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=-1)
         self.assertEqual(self.client.get('/jobs').status_code, 302)
+
+    def test_valid_login_with_origin_but_no_referrer(self):
+        token = self.csrf()
+        response = self.client.post('/login', base_url='https://localhost', data={
+            'username': 'admin', 'password': 'correct horse battery staple', 'csrf_token': token},
+            headers={'Origin': 'https://localhost'})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], '/')
+
+    def test_cross_origin_post_is_rejected_even_with_token(self):
+        token = self.csrf()
+        response = self.client.post('/login', base_url='https://localhost', data={
+            'username': 'admin', 'password': 'correct horse battery staple', 'csrf_token': token},
+            headers={'Origin': 'https://attacker.example', 'Referer': 'https://localhost/login'})
+        self.assertEqual(response.status_code, 400)
+
+    def test_missing_referrer_does_not_bypass_csrf_validation(self):
+        token = self.csrf()
+        response = self.client.post('/login', base_url='https://localhost', data={
+            'username': 'admin', 'password': 'correct horse battery staple', 'csrf_token': token + '-invalid'},
+            headers={'Origin': 'https://localhost'})
+        self.assertEqual(response.status_code, 400)
+
+    def test_privacy_browser_without_either_header_still_requires_valid_token(self):
+        token = self.csrf()
+        response = self.client.post('/login', base_url='https://localhost', data={
+            'username': 'admin', 'password': 'correct horse battery staple', 'csrf_token': token})
+        self.assertEqual(response.status_code, 302)
+
+    def test_mismatched_referrer_without_origin_is_rejected(self):
+        token = self.csrf()
+        response = self.client.post('/login', base_url='https://localhost', data={
+            'username': 'admin', 'password': 'correct horse battery staple', 'csrf_token': token},
+            headers={'Referer': 'https://attacker.example/page'})
+        self.assertEqual(response.status_code, 400)
+
+    def test_favicon_request_does_not_invalidate_login_form(self):
+        token = self.csrf()
+        self.client.get('/favicon.ico', base_url='https://localhost', follow_redirects=True)
+        response = self.client.post('/login', base_url='https://localhost', data={
+            'username': 'admin', 'password': 'correct horse battery staple', 'csrf_token': token},
+            headers={'Referer': 'https://localhost/login'})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], '/')
+
+    def test_anonymous_redirect_preserves_open_login_form(self):
+        token = self.csrf()
+        self.client.get('/jobs', base_url='https://localhost', follow_redirects=True)
+        response = self.client.post('/login', base_url='https://localhost', data={
+            'username': 'admin', 'password': 'correct horse battery staple', 'csrf_token': token},
+            headers={'Referer': 'https://localhost/login'})
+        self.assertEqual(response.status_code, 302)
