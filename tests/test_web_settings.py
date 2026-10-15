@@ -54,3 +54,13 @@ class WebSettingsTests(WebCase):
         with ProcessLock(self.home / 'web-action.lock'):
             response = self.post('/sources/discover', page='/sources')
         self.assertIn(b'already running', response.data)
+
+    def test_invalid_profile_preserves_unsaved_fields_and_raw_json(self):
+        response = self.post('/profile', {
+            'personal_first_name': 'Unsaved name', 'summary': 'Unsaved summary',
+            'skills': 'React\nTypeScript', 'experience_json': '[broken',
+        }, page='/profile')
+        self.assertIn(b'Unsaved name', response.data)
+        self.assertIn(b'Unsaved summary', response.data)
+        self.assertIn(b'[broken', response.data)
+        self.assertFalse((self.home / 'profile.json').exists())

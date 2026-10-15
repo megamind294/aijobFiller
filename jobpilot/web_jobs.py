@@ -134,9 +134,13 @@ def register_jobs(app):
         job = get_job(key)
         if not job['resume']:
             abort(404)
-        path = Path(job['resume']).resolve()
-        expected = (home / 'resumes' / key / 'resume.pdf').resolve()
-        if path != expected or not path.is_relative_to(home.resolve()) or not path.is_file():
+        expected = home / 'resumes' / key / 'resume.pdf'
+        # Resolving the intended path first would hide a symlink to another
+        # private file inside home. Reject links in every expected component.
+        if any(component.is_symlink() for component in (expected, *expected.parents)):
+            abort(404)
+        path = Path(job['resume']).absolute()
+        if path != expected or expected.resolve() != expected or not expected.is_file():
             abort(404)
         return send_file(path, mimetype='application/pdf', as_attachment=True,
                          download_name=f'JobPilot-resume-{key}.pdf')

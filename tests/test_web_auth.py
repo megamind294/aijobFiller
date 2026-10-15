@@ -45,3 +45,9 @@ class WebAuthTests(WebCase):
         response = self.post('/login?next=https://attacker.example/', {
             'username': 'admin', 'password': 'correct horse battery staple'}, page='/login')
         self.assertIn(b'Your job search', response.data)
+
+    def test_expired_session_requires_login(self):
+        from datetime import timedelta
+        self.login()
+        self.app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=-1)
+        self.assertEqual(self.client.get('/jobs').status_code, 302)

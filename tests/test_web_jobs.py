@@ -103,3 +103,31 @@ class WebJobsTests(WebCase):
             response = self.post('/jobs/' + key + '/prepare')
         self.assertIn(b'already running', response.data)
         self.assertEqual(self.store.get(key)['status'], 'DISCOVERED')
+
+    def test_resume_symlink_cannot_expose_inside_home_files(self):
+        key = self.add_job()
+        target = self.home / 'web-auth.json'
+        resume = self.home / 'resumes' / key / 'resume.pdf'
+        resume.parent.mkdir(parents=True)
+        try:
+            resume.symlink_to(target)
+        except OSError:
+            self.skipTest('Windows symlink privilege unavailable; also verified on Linux before rollout')
+        self.store.update(key, 'PREPARED', resume=str(resume))
+        response = self.client.get('/jobs/' + key + '/resume')
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn(b'password_hash', response.data)
+
+    def test_resume_rejects_symlink_metadata(self):
+        from unittest.mock import patch
+        key = self.add_job()
+        resume = self.home / 'resumes' / key / 'resume.pdf'
+        resume.parent.mkdir(parents=True)
+        resume.write_bytes(b'%PDF-private-target')
+        self.store.update(key, 'PREPARED', resume=str(resume))
+        # Windows cannot create a real file symlink without privilege. Exercise
+        # the same filesystem metadata boundary; Linux also runs the real-link test.
+        with patch('pathlib.Path.is_symlink', autospec=True, side_effect=lambda path: path == resume):
+            response = self.client.get('/jobs/' + key + '/resume')
+        self.addCleanup(response.close)
+        self.assertEqual(response.status_code, 404)

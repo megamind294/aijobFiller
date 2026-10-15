@@ -6,7 +6,7 @@ from pathlib import Path
 from flask import current_app, flash, redirect, render_template, request
 
 from .core import read_json, validate_profile, write_json
-from .sources import discover
+from .sources import DiscoveryBudget, discover
 from .web_jobs import action_guard, validate_job
 
 
@@ -81,7 +81,10 @@ def register_settings(app):
                     for field in ('skills', 'languages'):
                         candidate[field] = [v.strip() for v in request.form.get(field, '').splitlines() if v.strip()]
                     for field, default in (('experience', []), ('projects', []), ('education', []), ('summary_variants', []), ('answers', {}), ('custom', {})):
-                        candidate[field] = json.loads(request.form.get(field + '_json', json.dumps(default)))
+                        try:
+                            candidate[field] = json.loads(request.form.get(field + '_json', json.dumps(default)))
+                        except json.JSONDecodeError as exc:
+                            raise ValueError(f'{field}: {exc.msg} at line {exc.lineno}. Your edits are preserved below.') from None
                 validate_profile_shape(candidate)
                 candidate['facts_verified'] = request.form.get('facts_verified') == 'yes'
                 if candidate['facts_verified']:
@@ -94,7 +97,8 @@ def register_settings(app):
             except (ValueError, TypeError, RuntimeError) as exc:
                 flash('Another action is already running. Try again shortly.' if isinstance(exc, RuntimeError) else str(exc), 'error')
                 candidate = current_profile()
-        return render_template('profile.html', profile=candidate)
+        return render_template('profile.html', profile=candidate,
+                               submitted=request.form if request.method == 'POST' else None)
 
     @app.route('/sources', methods=['GET', 'POST'])
     def sources():
@@ -123,7 +127,7 @@ def register_settings(app):
         config = validate_sources(read_json(sources_path))
         if not config.get('sources'):
             raise ValueError('Add a company board before running discovery.')
-        found, errors = discover(config)
+        found, errors = discover(config, budget=DiscoveryBudget())
         store = current_app.extensions['jobpilot_store']
         for job in found:
             store.add(validate_job(job))

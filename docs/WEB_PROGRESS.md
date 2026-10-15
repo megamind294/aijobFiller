@@ -20,3 +20,13 @@ Task 3: complete (settings tests RED missing routes -> GREEN 5/5).
 Task 4: in progress (responsive interface, full-suite and browser QA, production configuration).
 
 Task 4: Full suite 47/47 passing, including original local browser workflow. Real-browser QA passed login, dashboard, manual job creation, resume PDF download, profile save, status confirmation, Excel download, and four narrow-screen routes. Screenshots visually inspected; added visible mobile account/sign-out controls.
+
+Final review: fresh reviewer found three Important issues and no minors. Fix pass: reject resume path/component symlinks (metadata regression RED 200 -> GREEN 404; real Linux-link test scheduled before service start); preserve unsaved profile fields/raw nested JSON after validation failures (RED lost edits -> GREEN preserved); bound discovery to a 30-second budget, 5-second socket timeout, 2 MiB responses, five Lever pages and 500 results (three RED missing-budget tests -> GREEN). Added expired-session coverage. Final full-suite rerun in progress.
+
+Final: Ruling: reviewer deferred live DNS/TLS/firewall/service health to rollout checks — these will be verified on the VM before delivery; cost if wrong is an inaccessible site.
+Final: Ruling: real company-feed availability remains external and is checked on demand; mocked feeds test deterministic behavior without changing the real queue. Cost if wrong is a reported source error, not a false application submission.
+Final: Ruling: Gmail, paid AI, and employer submission remain outside this approved release, as documented; cost if wrong is a later feature request.
+
+Task 5: Private-data backup created at /var/backups/jobpilot-web/preweb-20261015T085318Z.tar.gz. Original VM checkout revision 9b2c3f4e6281bcf7ee54b30104176f685a2f8cb2 is clean and preserved. Installed distro Caddy and prerequisites. Azure hostname assigned: jobpilot-1341125888.polandcentral.cloudapp.azure.com. No web app service started yet.
+
+Final: all three Important review findings fixed with RED-to-GREEN regressions. Final Windows suite: 54 tests, 53 passed, one skipped because native file symlinks require Windows privilege. That exact real-link case must pass on Linux before starting the service. Updated-app real-browser QA passed again; Python compilation passed. No deferred minors.

@@ -1,5 +1,14 @@
 # JobPilot
 
+## Private browser interface
+
+The optional web interface provides a password-protected dashboard, job imports,
+profile editing, on-demand discovery, factual resume PDFs, application history,
+and Excel downloads. See [Azure web deployment](deploy/AZURE_WEB.md) for HTTPS
+hosting on an existing Linux VM. Install `requirements-web.txt` for this interface;
+the command-line workflow below remains available. Employer application links open
+on your own device; the web interface does not submit forms or schedule discovery.
+
 Python assistant for Rinkle's React/frontend job search. It provides public job
 feed discovery, ChatGPT JSON/CSV imports, truthful per-job resume PDFs, visible
 browser form filling, optional Gmail OTP support, application status/history,
