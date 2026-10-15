@@ -13,3 +13,10 @@ Task 1: in progress. Auth tests written before implementation.
 Task 1: Authentication tests RED (missing web module) to GREEN (6/6). HTTPS test requests now send the real browser Referer header required by Flask-WTF.
 
 Ruling: Close Store SQLite connections explicitly after their transaction context. Existing core tests failed on Windows because the original connection context committed but left handles open, preventing temporary data cleanup. All callers use with store.connect(); transaction semantics remain unchanged. Cost if wrong: database access regression, covered by the existing suite.
+
+Task 1: complete (commit edf1e4c; auth tests 6/6, existing core tests 9/9).
+Task 2: complete (job-route tests RED 404/missing actions -> GREEN 8/8; commit pending combined functional checkpoint).
+Task 3: complete (settings tests RED missing routes -> GREEN 5/5).
+Task 4: in progress (responsive interface, full-suite and browser QA, production configuration).
+
+Task 4: Full suite 47/47 passing, including original local browser workflow. Real-browser QA passed login, dashboard, manual job creation, resume PDF download, profile save, status confirmation, Excel download, and four narrow-screen routes. Screenshots visually inspected; added visible mobile account/sign-out controls.

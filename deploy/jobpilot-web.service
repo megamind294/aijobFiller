@@ -1,0 +1,28 @@
+[Unit]
+Description=Private JobPilot web interface
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=jobpilot
+Group=jobpilot
+WorkingDirectory=/opt/jobpilot-web/current
+EnvironmentFile=/etc/jobpilot-web.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/jobpilot-web/current/.venv/bin/gunicorn --bind 127.0.0.1:8080 --workers 1 --threads 4 --timeout 180 --access-logfile /dev/null --error-logfile - jobpilot.web:create_app()
+Restart=on-failure
+RestartSec=5
+StateDirectory=jobpilot
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/jobpilot
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

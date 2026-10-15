@@ -10,6 +10,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .core import Store, read_json, validate_profile
 from .web_auth import init_auth
+from .web_jobs import register_jobs
+from .web_settings import register_settings
 
 
 def create_app(config=None):
@@ -68,4 +70,6 @@ def create_app(config=None):
         return render_template('dashboard.html', jobs=rows[:5], counts=Counter(j['status'] for j in rows),
                                total=len(rows), profile_ready=ready)
 
+    register_jobs(app)
+    register_settings(app)
     return app
