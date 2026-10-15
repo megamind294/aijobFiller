@@ -19,3 +19,9 @@ document.querySelectorAll('form').forEach((form) => {
 document.querySelectorAll('input[type="file"]').forEach((input) => {
   input.addEventListener('change', () => input.setCustomValidity(''));
 });
+document.querySelectorAll('[data-open-dialog]').forEach((button) => {
+  button.addEventListener('click', () => document.getElementById(button.dataset.openDialog)?.showModal());
+});
+document.querySelectorAll('[data-close-dialog]').forEach((button) => {
+  button.addEventListener('click', () => button.closest('dialog')?.close());
+});

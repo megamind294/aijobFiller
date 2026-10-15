@@ -7,6 +7,9 @@ dist/
 credentials.json
 *token*.json
 .env
+.env.*
+.firecrawl/
 web-tests.log
+web-tests-final.log
 .web-preview/
 deployment-artifacts/

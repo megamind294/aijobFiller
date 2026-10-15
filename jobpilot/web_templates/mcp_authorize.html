@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Authorize connection · JobPilot{% endblock %}
+{% block content %}
+<h1>Authorize {{ oauth_client.client_name }}</h1>
+<p>This client is requesting access to your signed-in JobPilot account. Only grant access if you started this connection.</p>
+<p>Requested permissions:</p>
+<ul>{% for scope in oauth_scopes %}<li>{{ scope }}</li>{% endfor %}</ul>
+<p>Application actions require confirmation of exact profile, job, document, and form versions. Document approval queues employer-form filling. Form approval authorizes and queues submission after your separate review. These actions share your account credits and daily limit. This connection cannot run arbitrary commands.</p>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="consent_nonce" value="{{ consent_nonce }}">
+  <button name="decision" value="allow" type="submit">Allow this connection</button>
+  <button name="decision" value="deny" type="submit">Cancel</button>
+</form>
+{% endblock %}

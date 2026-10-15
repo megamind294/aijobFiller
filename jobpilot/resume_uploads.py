@@ -7,13 +7,48 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
 from .core import now, read_json, write_json
 
 
-def extract_document(path):
+def ocr_pdf_page(path, page_number, deadline):
+    """Read one bounded raster page locally; never send a resume to an API."""
+    renderer, engine = shutil.which('pdftoppm'), shutil.which('tesseract')
+    if not renderer or not engine:
+        raise ValueError('This PDF needs OCR. OCR tools are unavailable; your previous resume is preserved.')
+    environment = {**os.environ, 'OMP_THREAD_LIMIT': '1'}
+    def run(command, limit):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError('OCR reached its time limit. Try a shorter or clearer document.')
+        try:
+            result = subprocess.run(command, capture_output=True, timeout=min(limit, remaining), env=environment,
+                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0)
+        except subprocess.TimeoutExpired:
+            raise ValueError('OCR reached its time limit. Try a shorter or clearer document.') from None
+        if result.returncode:
+            raise ValueError('OCR could not read this page. Try a clearer PDF or a DOCX resume.')
+    with tempfile.TemporaryDirectory() as temporary:
+        prefix = Path(temporary) / 'page'
+        run([renderer, '-f', str(page_number), '-l', str(page_number), '-singlefile',
+             '-r', '180', '-scale-to', '2400', '-png', str(path), str(prefix)], 15)
+        image = prefix.with_suffix('.png')
+        if not image.is_file() or image.stat().st_size > 25 * 1024 * 1024:
+            raise ValueError('This page exceeds the OCR image limit.')
+        output = Path(temporary) / 'recognized'
+        run([engine, str(image), str(output), '-l', 'eng', '--psm', '3'], 20)
+        result = output.with_suffix('.txt')
+        if not result.is_file() or result.stat().st_size > 500000:
+            raise ValueError('This page exceeds the OCR text limit.')
+        return result.read_text(encoding='utf-8').strip()
+
+
+def extract_document(path, details=None):
+    details = details if details is not None else {}
+    details['ocr_pages'] = []
     if path.suffix == '.pdf':
         from pypdf import PdfReader
         if not path.read_bytes().startswith(b'%PDF-'):
@@ -23,7 +58,17 @@ def extract_document(path):
             raise ValueError('Remove password protection from the PDF before uploading.')
         if len(reader.pages) > 25:
             raise ValueError('Upload a resume with at most 25 pages.')
-        text = '\n'.join((page.extract_text() or '') for page in reader.pages)
+        pages = []
+        deadline = time.monotonic() + 60
+        for number, page in enumerate(reader.pages, 1):
+            page_text = page.extract_text() or ''
+            if not page_text.strip() and len(page.images):
+                if len(details['ocr_pages']) >= 10:
+                    raise ValueError('Upload at most 10 scanned pages for OCR.')
+                page_text = ocr_pdf_page(path, number, deadline)
+                details['ocr_pages'].append(number)
+            pages.append(page_text)
+        text = '\n'.join(pages)
     else:
         from defusedxml.ElementTree import fromstring
         with zipfile.ZipFile(path) as archive:
@@ -44,9 +89,20 @@ def extract_document(path):
 
 
 def extract_in_worker(path):
+    from flask import current_app, has_app_context
+    from .service import ProcessLock
+    from contextlib import nullcontext
+    # One shared lock across all account workspaces and browser workers.
+    lock = (ProcessLock(Path(current_app.config['JOBPILOT_HOME']) / 'heavy-work.lock')
+            if has_app_context() else nullcontext())
+    with lock:
+        return _extract_in_worker(path)
+
+
+def _extract_in_worker(path):
     try:
         result = subprocess.run([sys.executable, '-m', 'jobpilot.resume_uploads', '--extract', str(path)],
-                                capture_output=True, text=True, encoding='utf-8', timeout=15,
+                                capture_output=True, text=True, encoding='utf-8', timeout=90,
                                 cwd=str(Path(__file__).resolve().parent.parent),
                                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0)
     except subprocess.TimeoutExpired:
@@ -148,8 +204,30 @@ def register_resume_uploads(app):
     from flask import abort, flash, redirect, request, send_file
     from werkzeug.utils import secure_filename
     from .service import ProcessLock
+    from .workspace import current_home
+    from werkzeug.local import LocalProxy
 
-    home = Path(app.config['JOBPILOT_HOME'])
+    home = LocalProxy(current_home)
+
+    def save_parsed(source, parsed, filename, uploaded_at, reuse_original=False):
+        identifier = secrets.token_hex(16)
+        metadata = {'id': identifier, 'suffix': source.suffix, 'filename': filename,
+                    'size': source.stat().st_size, 'uploaded_at': uploaded_at, 'parsed_at': now(),
+                    'draft': parsed['draft'], 'ocr_pages': parsed.get('ocr_pages', [])}
+        directory = home / 'uploaded-resumes' / identifier
+        directory.mkdir(parents=True, mode=0o700)
+        target = private_path(home, metadata, 'original')
+        if reuse_original:
+            # Extraction revisions share the same immutable original inode.
+            # Keep old versions for recovery without copying each 5 MiB file.
+            os.link(source, target)
+        else:
+            shutil.copyfile(source, target)
+        target.chmod(0o600)
+        text_path = private_path(home, metadata, 'text')
+        text_path.write_text(parsed['text'], encoding='utf-8')
+        text_path.chmod(0o600)
+        write_json(home / 'current-resume.json', metadata)
 
     @app.post('/profile/resume')
     def upload_resume():
@@ -159,27 +237,35 @@ def register_resume_uploads(app):
                 suffix = Path(upload.filename or '').suffix.lower() if upload else ''
                 if suffix not in ('.pdf', '.docx'):
                     raise ValueError('Choose a PDF or DOCX resume under 5 MiB.')
-                with tempfile.TemporaryDirectory(dir=home) as temporary:
+                with tempfile.TemporaryDirectory(dir=str(home)) as temporary:
                     source = Path(temporary) / ('original' + suffix)
                     upload.save(source)
                     if not 0 < source.stat().st_size <= 5 * 1024 * 1024:
                         raise ValueError('Choose a nonempty resume under 5 MiB.')
                     parsed = extract_in_worker(source)
                     text = parsed['text']
-                    identifier = secrets.token_hex(16)
                     filename = Path(secure_filename(upload.filename)).stem[:140] or 'resume'
-                    metadata = {'id': identifier, 'suffix': suffix, 'filename': filename + suffix,
-                                'size': source.stat().st_size, 'uploaded_at': now(), 'draft': parsed['draft']}
-                    directory = home / 'uploaded-resumes' / identifier
-                    directory.mkdir(parents=True, mode=0o700)
-                    target = private_path(home, metadata, 'original')
-                    shutil.copyfile(source, target)
-                    target.chmod(0o600)
-                    private_path(home, metadata, 'text').write_text(text, encoding='utf-8')
-                    write_json(home / 'current-resume.json', metadata)
+                    save_parsed(source, parsed, filename + suffix, now())
                 flash('Resume uploaded. Review the extracted suggestions before importing them.', 'success')
                 if not text:
-                    flash('No selectable text was found. Your original file is saved; use a text-based resume to prefill your profile.', 'error')
+                    flash('No readable text was found, including OCR. Your original is saved; try a clearer scan or DOCX.', 'error')
+        except (ValueError, RuntimeError, OSError) as exc:
+            flash('Another action is already running. Try again shortly.' if isinstance(exc, RuntimeError) else str(exc), 'error')
+        return redirect('/profile#resume-upload')
+
+    @app.post('/profile/resume/reprocess')
+    def reprocess_uploaded_resume():
+        try:
+            with ProcessLock(home / 'web-action.lock'):
+                metadata = load_resume(home)
+                if metadata is None or request.form.get('resume_id') != metadata['id']:
+                    raise ValueError('The uploaded resume changed. Reload this page before reading again.')
+                source = private_path(home, metadata, 'original')
+                parsed = extract_in_worker(source)
+                if not parsed['text'].strip():
+                    raise ValueError('No readable text was found, including OCR. Previous extracted text and suggestions are preserved.')
+                save_parsed(source, parsed, metadata['filename'], metadata['uploaded_at'], reuse_original=True)
+                flash('Resume read again. Review the recovered text and suggestions before importing.', 'success')
         except (ValueError, RuntimeError, OSError) as exc:
             flash('Another action is already running. Try again shortly.' if isinstance(exc, RuntimeError) else str(exc), 'error')
         return redirect('/profile#resume-upload')
@@ -226,10 +312,11 @@ if __name__ == '__main__':
     if os.name != 'nt':
         import resource
         resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024,) * 2)
-        resource.setrlimit(resource.RLIMIT_CPU, (10, 10))
+        resource.setrlimit(resource.RLIMIT_CPU, (60, 60))
     try:
-        extracted_text = extract_document(Path(sys.argv[2]))
-        print(json.dumps({'text': extracted_text, 'draft': suggested_profile(extracted_text)}))
+        details = {}
+        extracted_text = extract_document(Path(sys.argv[2]), details)
+        print(json.dumps({'text': extracted_text, 'draft': suggested_profile(extracted_text), **details}))
     except ValueError as error:
         print(json.dumps({'error': str(error)}))
         raise SystemExit(2)

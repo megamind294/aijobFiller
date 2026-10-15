@@ -54,6 +54,13 @@ after changing the password.
 
 ## Operations
 
+Scanned-resume OCR requires Ubuntu packages `poppler-utils`, `tesseract-ocr`,
+and `tesseract-ocr-eng`. Install them with `sudo apt-get install -y poppler-utils
+tesseract-ocr tesseract-ocr-eng`. OCR runs locally on demand, one page at a time,
+with a 2400-pixel raster limit, one Tesseract thread, a 60-second OCR budget,
+and the extraction worker's 256 MiB memory limit. Native text remains preferred.
+Up to 10 image-only pages are supported per document; OCR output needs review.
+
 ```sh
 sudo systemctl status jobpilot-web --no-pager
 sudo journalctl -u jobpilot-web -n 50 --no-pager

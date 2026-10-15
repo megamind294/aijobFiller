@@ -46,8 +46,10 @@ def validate_job(job):
 
 
 def register_jobs(app):
-    store = app.extensions['jobpilot_store']
-    home = Path(app.config['JOBPILOT_HOME'])
+    from werkzeug.local import LocalProxy
+    from .workspace import current_home, current_store
+    store = LocalProxy(current_store)
+    home = LocalProxy(current_home)
 
     def get_job(key):
         if not re.fullmatch(r'[a-f0-9]{16}', key):

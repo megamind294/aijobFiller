@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Plans & credits{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="eyebrow">YOUR ACCOUNT</span><h1>Plans &amp; credits</h1><p>One credit per application. Your daily limit is shared across every lane.</p></div></div>
+{% if owner %}
+<section class="panel"><h2>Admin · Unlimited</h2><p>Your verified owner role includes all tiers without customer checkout or credit deductions. Operational daily limits still apply.</p></section>
+{% else %}
+<section class="panel"><h2>{{ balance.available }} available credits</h2><p>{{ balance.reserved }} reserved · Current plan: {{ subscription.tier|title }} · {{ subscription.status }}</p><p>Free applications: 25 once per account. Subscription credits refresh monthly and expire at the next monthly boundary. Wallet credits do not expire.</p>
+{% if subscription.customer_id %}<form method="post" action="{{ url_for('billing_portal') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Manage payments &amp; cancellation</button></form>{% endif %}</section>
+{% if configuration_error %}<div class="notice" role="status">{{ configuration_error }} Checkout becomes available after the operator completes billing setup.</div>{% endif %}
+<div class="cards-grid">
+{% for tier, cycles in prices.items() %}<section class="panel"><h2>{{ tier|title }}</h2><p>{{ cycles.monthly.monthly_credits }} applications per month{% if cycles.monthly.auto %} · Auto Apply{% endif %}</p>
+{% for cycle, price in cycles.items() %}<form method="post" action="{{ url_for('billing_checkout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="subscription"><input type="hidden" name="tier" value="{{ tier }}"><input type="hidden" name="cycle" value="{{ cycle }}"><input type="hidden" name="attempt" value="{{ attempt }}-{{ tier }}-{{ cycle }}"><button type="submit" {% if configuration_error %}disabled{% endif %}>{{ cycle|title }} · ${{ price.usd }} USD</button></form>{% endfor %}
+<p>Includes one package markup of 20 PLN, converted at {{ cycles.monthly.rate.pln_per_usd }} PLN/USD, dated {{ cycles.monthly.rate.date }} ({{ cycles.monthly.rate.source }}).</p></section>{% endfor %}
+</div>
+<section class="panel"><h2>Top up your wallet</h2><p>Base value buys credits at $0.10 each, with a $5 minimum. The package markup is added to your payment and does not buy extra credits. Failed applications release or refund their credit.</p><form method="post" action="{{ url_for('billing_checkout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="wallet"><input type="hidden" name="attempt" value="{{ attempt }}-wallet"><label for="base-usd">Base package value (USD)</label><input id="base-usd" name="base_usd" type="number" min="5" max="1000" step="0.10" value="20" required><button type="submit" {% if configuration_error %}disabled{% endif %}>Review total in secure checkout</button></form></section>
+<section class="panel"><h2>Application credit history</h2><table><thead><tr><th>Application</th><th>Date</th><th>Credit status</th></tr></thead><tbody>{% for item in history %}<tr><td>{{ item.reference }}</td><td>{{ item.day }}</td><td>{{ item.state }}</td></tr>{% else %}<tr><td colspan="3">No application credit activity yet.</td></tr>{% endfor %}</tbody></table></section>
+{% endif %}
+{% endblock %}

@@ -5,7 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from flask import Flask, abort, render_template, request
+from flask import Flask, abort, g, render_template, request
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -24,9 +24,11 @@ def create_app(config=None):
         SESSION_COOKIE_NAME='jobpilot_session', SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
-        MAX_CONTENT_LENGTH=5 * 1024 * 1024, MAX_FORM_PARTS=40,
+        MAX_CONTENT_LENGTH=5 * 1024 * 1024, MAX_FORM_PARTS=500,
         MAX_FORM_MEMORY_SIZE=512 * 1024,
         WTF_CSRF_SSL_STRICT=False,
+        MCP_PUBLIC_URL=os.environ.get('MCP_PUBLIC_URL') or (
+            'https://' + os.environ['JOBPILOT_WEB_HOST'] if os.environ.get('JOBPILOT_WEB_HOST') else ''),
     )
     if config:
         app.config.update(config)
@@ -40,8 +42,23 @@ def create_app(config=None):
     app.extensions['jobpilot_store'] = Store(home)
     init_auth(app)
 
+    @app.context_processor
+    def workspace_context():
+        from .billing import CreditLedger
+        account = getattr(g, 'jobpilot_account', {'id': 'owner', 'role': 'owner', 'email': ''})
+        credits = {'available': 0, 'reserved': 0}
+        if account.get('role') != 'owner':
+            ledger = CreditLedger(home)
+            ledger.grant(account['id'], 'free:' + account['id'], 25, 'free')
+            credits = ledger.balance(account['id'])
+        initials = 'JP' if account.get('role') == 'owner' else (account.get('email', '')[:2].upper() or 'ME')
+        return {'workspace_account': account, 'workspace_credits': credits, 'workspace_initials': initials}
+
     @app.before_request
     def verify_browser_origin():
+        from .web_auth import PROTOCOL_ENDPOINTS
+        if request.endpoint in PROTOCOL_ENDPOINTS:
+            return None
         if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
             return None
         # Privacy browsers may omit Referer. Check Origin when available;
@@ -61,7 +78,7 @@ def create_app(config=None):
         if request.headers.get('Sec-Fetch-Site') == 'cross-site':
             abort(400)
 
-    CSRFProtect(app)
+    csrf = CSRFProtect(app)
     # Production is loopback-only behind exactly one Caddy proxy.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=0, x_port=0, x_prefix=0)
 
@@ -91,16 +108,25 @@ def create_app(config=None):
 
     @app.get('/')
     def dashboard():
-        store = app.extensions['jobpilot_store']
+        from .workspace import current_home, current_store
+        store = current_store()
         rows = store.rows()
         ready = False
         try:
-            validate_profile(read_json(home / 'profile.json'))
+            validate_profile(read_json(current_home() / 'profile.json'))
             ready = True
         except (ValueError, FileNotFoundError, TypeError):
             pass
+        from .discovery_catalog import catalog_rows, explain_match
+        try:
+            profile = read_json(current_home() / 'profile.json')
+        except (ValueError, FileNotFoundError):
+            profile = {}
+        matches = catalog_rows(store)[:6]
+        for job in matches:
+            job['match'] = explain_match(job, profile)
         return render_template('dashboard.html', jobs=rows[:5], counts=Counter(j['status'] for j in rows),
-                               total=len(rows), profile_ready=ready)
+                               total=len(rows), profile_ready=ready, matches=matches)
 
     @app.get('/favicon.ico')
     def favicon():
@@ -109,4 +135,29 @@ def create_app(config=None):
     register_jobs(app)
     register_settings(app)
     register_resume_uploads(app)
+    from .profile_vault import register_profile_vault
+    from .web_discovery import register_discovery
+    from .web_inbox import register_inbox
+    register_profile_vault(app)
+    register_discovery(app)
+    register_inbox(app)
+    from .web_accounts import register_accounts
+    register_accounts(app)
+    from .web_billing import register_billing
+    from .product_api import register_product_api
+    from .mcp_server import register_mcp
+    from .web_applications import register_applications
+    from .web_automation import register_automation
+    register_billing(app)
+    register_product_api(app)
+    register_mcp(app)
+    register_applications(app)
+    register_automation(app)
+    from .workspace_pages import register_workspace_pages
+    register_workspace_pages(app)
+    from .web_auth import PROTOCOL_ENDPOINTS
+    for endpoint in PROTOCOL_ENDPOINTS:
+        view = app.view_functions.get(endpoint)
+        if view is not None:
+            csrf.exempt(view)
     return app

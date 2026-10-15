@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}ChatGPT connection · JobPilot{% endblock %}
+{% block content %}
+<h1>ChatGPT connection</h1>
+<p>Use this MCP server URL when adding your JobPilot connection: <code>{{ mcp_url }}</code></p>
+{% if not oauth_enabled %}<p>Remote connections are unavailable until the administrator configures the public HTTPS address.</p>{% endif %}
+<p>Your connection uses your JobPilot account. Read tools show your profile, jobs, and application states. Action tools require your confirmation of current versions; form approval authorizes and queues employer submission.</p>
+<h2>Authorized connections</h2>
+{% for connection in connections %}
+<article><p>Client {{ connection.client_id or 'Personal API token' }}</p><p>{{ connection.scopes }}</p>
+<form method="post" action="{{ url_for('mcp.connection_revoke') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="grant_id" value="{{ connection.grant_id }}"><button type="submit">Revoke access</button></form></article>
+{% else %}<p>No active connections.</p>{% endfor %}
+{% endblock %}

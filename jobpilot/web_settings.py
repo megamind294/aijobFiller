@@ -59,48 +59,59 @@ def validate_sources(config):
 
 
 def register_settings(app):
-    home = Path(app.config['JOBPILOT_HOME'])
-    profile_path = home / 'profile.json'
-    sources_path = home / 'sources.json'
-
-    def current_profile():
-        return read_json(profile_path) if profile_path.exists() else read_json(Path(__file__).parent / 'templates/profile.example.json')
+    from werkzeug.local import LocalProxy
+    from .workspace import current_home
+    home = LocalProxy(current_home)
+    sources_path = LocalProxy(lambda: current_home() / 'sources.json')
 
     @app.route('/profile', methods=['GET', 'POST'])
     def profile():
-        candidate = current_profile()
+        from .workspace import current_home
+        from .profile_forms import parse_profile_form, profile_errors, PERSONAL, SECTIONS, CUSTOM, document_preferences
+        from .profile_vault import ProfileVault
+        scoped_home = current_home()
+        scoped_path = scoped_home / 'profile.json'
+        vault = ProfileVault(scoped_home)
+        vault.ensure_legacy()
+        key = request.form.get('profile_id') or request.args.get('profile_id')
+        try:
+            selected = vault.get(key) if key else vault.default()
+        except ValueError:
+            from flask import abort
+            abort(404)
+        candidate = selected['profile'] if selected else (read_json(scoped_path) if scoped_path.exists() else {'personal':{}, 'skills':[], 'facts_verified':False})
+        errors = {}
         if request.method == 'POST':
             try:
-                if 'profile_json' in request.form:
-                    candidate = json.loads(request.form['profile_json'])
-                else:
-                    candidate = current_profile()
-                    candidate.setdefault('personal', {})
-                    for field in ('first_name', 'last_name', 'email', 'phone', 'city', 'country', 'state', 'address', 'postal_code', 'linkedin', 'github', 'website'):
-                        candidate['personal'][field] = request.form.get('personal_' + field, '').strip()
-                    candidate['summary'] = request.form.get('summary', '').strip()
-                    for field in ('skills', 'languages'):
-                        candidate[field] = [v.strip() for v in request.form.get(field, '').splitlines() if v.strip()]
-                    for field, default in (('experience', []), ('projects', []), ('education', []), ('summary_variants', []), ('answers', {}), ('custom', {})):
-                        try:
-                            candidate[field] = json.loads(request.form.get(field + '_json', json.dumps(default)))
-                        except json.JSONDecodeError as exc:
-                            raise ValueError(f'{field}: {exc.msg} at line {exc.lineno}. Your edits are preserved below.') from None
+                candidate = parse_profile_form(request.form, candidate)
                 validate_profile_shape(candidate)
-                candidate['facts_verified'] = request.form.get('facts_verified') == 'yes'
-                if candidate['facts_verified']:
-                    validate_profile(candidate)
+                errors = profile_errors(candidate)
+                if errors: raise ValueError('Check the highlighted fields. Your edits are preserved below.')
+                if candidate['facts_verified']: validate_profile(candidate)
                 from .service import ProcessLock
-                with ProcessLock(home / 'web-action.lock'):
-                    write_json(profile_path, candidate)
+                with ProcessLock(scoped_home / 'web-action.lock'):
+                    selected = vault.save(candidate, selected['id'] if selected else None,
+                                          expected_version=request.form.get('profile_version') or None)
                 flash('Profile saved. ' + ('Your verified facts are ready for resumes.' if candidate['facts_verified'] else 'Draft saved; verify your facts before preparing resumes.'), 'success')
-                return redirect('/profile')
+                return redirect('/profile?profile_id=' + selected['id'])
             except (ValueError, TypeError, RuntimeError) as exc:
                 flash('Another action is already running. Try again shortly.' if isinstance(exc, RuntimeError) else str(exc), 'error')
-                candidate = current_profile()
-        return render_template('profile.html', profile=candidate,
+                if 'profile_json' in request.form:
+                    candidate = selected['profile'] if selected else {'personal':{},'skills':[],'facts_verified':False}
+                else:
+                    recovery = {k:v for k,v in request.form.items() if not k.endswith('_json') and not k.startswith('preference_') and not k.startswith('answers_')}
+                    try: candidate = parse_profile_form(recovery, candidate)
+                    except ValueError: pass
+                if not isinstance(candidate,dict): candidate = {'personal':{}, 'skills':[], 'facts_verified':False}
+        answer_rows = list(candidate.get('answers',{}).items()) or [('', '')]
+        if request.method == 'POST' and 'profile_json' not in request.form:
+            indices = sorted({int(m.group(1)) for field in request.form if (m:=re.fullmatch(r'answers_(\d+)_question',field))})
+            if indices: answer_rows = [(request.form.get(f'answers_{i}_question',''),request.form.get(f'answers_{i}_answer','')) for i in indices]
+        return render_template('profile.html', profile=candidate, selected=selected, profiles=vault.list(), errors=errors, answer_rows=answer_rows,
+                               personal_fields=PERSONAL, repeat_sections=SECTIONS, custom_fields=CUSTOM,
+                               preferences=document_preferences(candidate.get('document_preferences')),
                                submitted=request.form if request.method == 'POST' else None,
-                               uploaded_resume=load_resume(home))
+                               uploaded_resume=load_resume(scoped_home))
 
     @app.route('/sources', methods=['GET', 'POST'])
     def sources():
@@ -130,7 +141,8 @@ def register_settings(app):
         if not config.get('sources'):
             raise ValueError('Add a company board before running discovery.')
         found, errors = discover(config, budget=DiscoveryBudget())
-        store = current_app.extensions['jobpilot_store']
+        from .workspace import current_store
+        store = current_store()
         for job in found:
             store.add(validate_job(job))
         flash(f'Discovery finished: {len(found)} matching opportunities found.', 'success')

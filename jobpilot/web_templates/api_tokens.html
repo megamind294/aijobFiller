@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}API access · JobPilot{% endblock %}
+{% block content %}
+<h1>API access</h1>
+<p>Create a token for your private JobPilot workspace. Tokens expire after 30 days. Revoke them from <a href="{{ url_for('mcp.connections') }}">authorized connections</a>.</p>
+{% if token_error %}<p role="alert">{{ token_error }}</p>{% endif %}
+{% if raw_token %}<p>Copy this token now. It will only be shown once.</p><pre>{{ raw_token }}</pre>{% endif %}
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<fieldset><legend>Permissions</legend>{% for scope in token_scopes %}<label><input name="scopes" type="checkbox" value="{{ scope }}"> {{ scope }}</label>{% endfor %}</fieldset>
+<button type="submit">Create token</button></form>
+{% endblock %}

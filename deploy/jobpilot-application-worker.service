@@ -1,0 +1,33 @@
+[Unit]
+Description=JobPilot approved application queue consumer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=jobpilot
+Group=jobpilot
+WorkingDirectory=/opt/jobpilot-web/current
+EnvironmentFile=/etc/jobpilot-web.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=JOBPILOT_ROOT=/var/lib/jobpilot
+Environment=JOBPILOT_APPLICATION_ADAPTERS_FILE=/etc/jobpilot-application-adapters.json
+Environment=PLAYWRIGHT_BROWSERS_PATH=/var/lib/jobpilot/playwright-browsers
+ExecStart=/opt/jobpilot-web/current/.venv/bin/python -m jobpilot.worker --home /var/lib/jobpilot --watch
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=45
+StateDirectory=jobpilot
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/jobpilot
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

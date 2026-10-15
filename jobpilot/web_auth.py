@@ -6,11 +6,22 @@ from functools import wraps
 from contextlib import closing
 from pathlib import Path
 
-from flask import current_app, flash, redirect, render_template, request, session, url_for
+from flask import abort, current_app, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .core import read_json, write_json
 from .service import ProcessLock
+
+PROTOCOL_ENDPOINTS = {
+    'billing_webhook', 'product_api.profile', 'product_api.jobs', 'product_api.applications',
+    'product_api.application_action_route', 'mcp.rpc', 'mcp.resource_metadata',
+    'mcp.resource_metadata_root', 'mcp.authorization_metadata', 'mcp.register', 'mcp.token', 'mcp.revoke',
+}
+
+
+def after_login_target():
+    target = session.pop('post_login_redirect', '')
+    return target if target.startswith('/oauth/authorize?') and not target.startswith('//') else '/'
 
 
 def auth_record():
@@ -18,8 +29,17 @@ def auth_record():
 
 
 def authenticated():
-    return bool(session.get('auth_version') and
-                session['auth_version'] == auth_record()['version'])
+    identifier = session.get('account_id')
+    if identifier:
+        account = current_app.extensions['jobpilot_accounts'].get(identifier)
+        valid = bool(account and account['version'] == session.get('auth_version'))
+        if valid:
+            g.jobpilot_account = account
+        return valid
+    valid = bool(session.get('auth_version') and session['auth_version'] == auth_record()['version'])
+    if valid:
+        g.jobpilot_account = {'id': 'owner', 'role': 'owner', 'email': ''}
+    return valid
 
 
 def login_required(view):
@@ -34,6 +54,8 @@ def login_required(view):
 
 
 def init_auth(app):
+    from .accounts import Accounts
+    app.extensions['jobpilot_accounts'] = Accounts(Path(app.config['JOBPILOT_HOME']))
     auth_path = Path(app.config['JOBPILOT_HOME']) / 'web-auth.json'
     app.config['AUTH_FILE'] = str(auth_path)
     if not auth_path.exists():
@@ -50,7 +72,9 @@ def init_auth(app):
 
     @app.before_request
     def require_session():
-        if request.endpoint in ('login', 'static', 'favicon'):
+        if request.endpoint in PROTOCOL_ENDPOINTS:
+            return None  # Each protocol handler verifies its bearer token, signature, or OAuth grant.
+        if request.endpoint in ('login', 'static', 'favicon', 'account_signin', 'account_code', 'account_verify', 'account_google', 'account_google_callback'):
             return None
         if not authenticated():
             # Anonymous sessions contain the login form's CSRF token. A
@@ -58,6 +82,8 @@ def init_auth(app):
             # invalidate that still-open form. Clear only stale auth sessions.
             if session.get('auth_version'):
                 session.clear()
+            if request.endpoint == 'mcp.authorize' and request.method == 'GET':
+                session['post_login_redirect'] = request.full_path
             return redirect(url_for('login'))
 
     @app.route('/login', methods=['GET', 'POST'])
@@ -76,10 +102,11 @@ def init_auth(app):
                 password_ok = check_password_hash(credentials['password_hash'], request.form.get('password', ''))
                 if request.form.get('username') == credentials['username'] and password_ok:
                     db.execute('DELETE FROM failures WHERE ip = ?', (ip,))
+                    target = after_login_target()
                     session.clear()
                     session['auth_version'] = credentials['version']
                     session.permanent = True
-                    return redirect(url_for('dashboard'))
+                    return redirect(target)
                 db.execute('INSERT INTO failures VALUES (?, ?)', (ip, stamp))
             return render_template('login.html', error='Invalid username or password.'), 401
         return render_template('login.html')
@@ -91,6 +118,8 @@ def init_auth(app):
 
     @app.route('/password', methods=['GET', 'POST'])
     def password():
+        if getattr(g, 'jobpilot_account', {}).get('role') != 'owner':
+            abort(403)
         if request.method == 'POST':
             with ProcessLock(Path(app.config['JOBPILOT_HOME']) / 'web-auth.lock'):
                 credentials = auth_record()
