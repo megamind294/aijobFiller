@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
@@ -76,8 +77,14 @@ class Store:
                 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT,
                 job_id TEXT, created TEXT, status TEXT, note TEXT);
                 CREATE TABLE IF NOT EXISTS mail_links (message_id TEXT PRIMARY KEY,job_id TEXT,created TEXT);''')
+    @contextmanager
     def connect(self):
-        c=sqlite3.connect(self.path,timeout=30); c.row_factory=sqlite3.Row; return c
+        c=sqlite3.connect(self.path,timeout=30); c.row_factory=sqlite3.Row
+        try:
+            with c:
+                yield c
+        finally:
+            c.close()
     def add(self, job):
         url=canonical_url(job['url']); key=hashlib.sha256(url.encode()).hexdigest()[:16]; stamp=now()
         with self.connect() as c:

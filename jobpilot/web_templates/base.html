@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% block title %}JobPilot{% endblock %} · Your next chapter</title><link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}"><script src="{{ url_for('static', filename='app.js') }}" defer></script></head>
+<body>
+{% if session.get('auth_version') %}
+<aside class="sidebar"><a class="brand" href="/">j<span class="brand-mark">↗</span> <span>JobPilot</span></a><span class="nav-label">YOUR WORKSPACE</span><nav aria-label="Main navigation"><a href="/" {% if request.path == '/' %}aria-current="page"{% endif %}>◫ <span>Overview</span></a><a href="/jobs" {% if request.path.startswith('/jobs') %}aria-current="page"{% endif %}>▤ <span>Applications</span></a><a href="/profile" {% if request.path == '/profile' %}aria-current="page"{% endif %}>◎ <span>Your profile</span></a><a href="/sources" {% if request.path == '/sources' %}aria-current="page"{% endif %}>⌕ <span>Find opportunities</span></a><a href="/export">↓ <span>Export to Excel</span></a></nav><div class="sidebar-bottom"><div class="private-note"><span class="live-dot"></span> Your private workspace<small>You're in control of every application.</small></div><a href="/password">Account settings</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="text-button" type="submit">Sign out ↗</button></form></div></aside>
+{% endif %}
+<main class="{% if session.get('auth_version') %}main{% else %}auth-main{% endif %}">
+{% if session.get('auth_version') %}<header class="topbar"><span>PERSONAL CAREER WORKSPACE</span><span class="top-status"><span class="live-dot"></span> On demand</span></header>{% endif %}
+<div class="page-content">{% for category, message in get_flashed_messages(with_categories=true) %}<div class="notice {{ category }}" role="status">{{ message }}</div>{% endfor %}{% block content %}{% endblock %}</div>
+</main></body></html>

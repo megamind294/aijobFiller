@@ -19,4 +19,4 @@ packages = ["jobpilot"]
 jobpilot = "jobpilot.cli:main"
 
 [tool.setuptools.package-data]
-jobpilot = ["templates/*.json"]
+jobpilot = ["templates/*.json", "web_templates/*.html", "web_static/*.css", "web_static/*.js"]
