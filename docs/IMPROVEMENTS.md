@@ -2,7 +2,7 @@
 
 User request (October 15, 2026): review the supplied architecture audit, fix missing resume upload first, then improve the application one step at a time.
 
-## 1. Resume intake — approved design, in progress
+## 1. Resume intake — deployed
 
 Add a prominent PDF/DOCX upload panel to Your profile. Store the original privately and provide authenticated download, extracted text, and conservative suggested profile fields. Upload does not overwrite the saved profile. A separate confirmed action imports detected fields as an unverified draft; no facts are invented or marked verified automatically.
 
@@ -12,7 +12,9 @@ Preserve unknown/undetected sections of an existing profile. Initial automatic s
 
 Verify PDF and DOCX upload, original-byte download, replacement safety, invalid formats, authentication/CSRF, extraction/worker limits, unverified import confirmation, saved-fact preservation, and responsive browser interaction before versioned Azure deployment.
 
-Implementation review: moved both text extraction and suggestion parsing into the limited worker after a long email-like token exposed a quadratic-regex stall. Replaced email matching with bounded token validation, added common employment/education section boundaries, and preserved extensions on long download filenames. All fixes have regressions. Windows verification: 76 tests passed with one native-symlink skip; browser checks passed PDF/DOCX upload, original download, confirmed draft import, unverified state, and desktop/mobile layouts. Linux staging and rollout pending.
+Implementation review: moved both text extraction and suggestion parsing into the limited worker after a long email-like token exposed a quadratic-regex stall. Replaced email matching with bounded token validation, added common employment/education section boundaries, and preserved extensions on long download filenames. All fixes have regressions. Windows verification: 76 tests run, 75 passed and one native-symlink test skipped; browser checks passed PDF/DOCX upload, original download, confirmed draft import, unverified state, and desktop/mobile layouts.
+
+Deployed release 84edcf3 on October 15, 2026. Linux staging passed 30 web tests, three discovery-limit tests, and all 15 resume tests, with worker memory/CPU limits enabled. Public HTTPS browser verification passed sign-in, the visible upload panel, protected pages, mobile layout, and sign-out. Services active; existing profile, data, and credentials preserved. Production verification did not upload fixture resumes or import fixture profile data.
 
 ## 2. Usable profile and source forms
 
