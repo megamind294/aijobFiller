@@ -48,6 +48,8 @@ def main():
                 existing[name] = value
     secret = existing.get('JOBPILOT_WEB_SECRET') or secrets.token_urlsafe(48)
     content = f'JOBPILOT_HOME=/var/lib/jobpilot\nJOBPILOT_WEB_SECRET={secret}\nJOBPILOT_WEB_HOST={args.hostname}\n'
+    managed = {'JOBPILOT_HOME', 'JOBPILOT_WEB_SECRET', 'JOBPILOT_WEB_HOST'}
+    content += ''.join(f'{name}={value}\n' for name, value in existing.items() if name not in managed)
     private_write(environment_path, content, 0, 0)
     print('Private web credentials and service configuration initialized.')
 
