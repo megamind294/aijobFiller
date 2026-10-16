@@ -37,6 +37,18 @@ class BillingRouteTests(unittest.TestCase):
         self.assertEqual(provider.call_args.args[1]['line_items[0][price_data][unit_amount]'],'16400')
         self.assertEqual(self.app.extensions['jobpilot_billing'].balance(self.account['id'])['available'],0)
 
+    def test_public_customer_cannot_use_test_checkout_without_operator_allowlist(self):
+        self.app.config['STRIPE_SECRET_KEY'] = 'sk_test_fixture'
+        with patch('jobpilot.web_billing.stripe_request',return_value={'id':'cs_test_blocked','url':'https://checkout.stripe.com/c/test'}) as provider:
+            response = self.client.post('/billing/checkout',data={'tier':'starter','attempt':'test-blocked'})
+        self.assertEqual(response.status_code,403)
+        provider.assert_not_called()
+        self.app.config['BILLING_TEST_ACCOUNT_IDS'] = self.account['id']
+        with patch('jobpilot.web_billing.stripe_request',return_value={'id':'cs_test_allowed','url':'https://checkout.stripe.com/c/test'}) as provider:
+            response=self.client.post('/billing/checkout',data={'tier':'starter','attempt':'test-allowed'})
+        self.assertEqual(response.status_code,303)
+        self.assertEqual(provider.call_count,1)
+
     def test_missing_config_and_owner_never_calls_provider(self):
         self.app.config['STRIPE_SECRET_KEY']=''
         with patch('jobpilot.web_billing.stripe_request') as provider:

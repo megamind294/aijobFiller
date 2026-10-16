@@ -72,6 +72,11 @@ def register_billing(app):
             abort(401)
         return value
 
+    def test_checkout_allowed(who):
+        if not setting('STRIPE_SECRET_KEY').startswith(('sk_test_', 'rk_test_')):
+            return True
+        return who['id'] in str(setting('BILLING_TEST_ACCOUNT_IDS')).split(',')
+
     def hosted_url(value, hostname):
         parsed=urlsplit(value or '')
         if parsed.scheme != 'https' or parsed.hostname != hostname:
@@ -91,6 +96,8 @@ def register_billing(app):
                 prices=pricing()
             except ValueError:
                 prices={}
+        if not owner and not test_checkout_allowed(who):
+            error = 'Checkout is being verified in test mode. Live customer payments are not enabled yet.'
         return render_template('billing.html', prices=prices, configuration_error=error, owner=owner,
             paid_access=owner or ledger.has_paid_access(who['id']),
             test_payments=setting('STRIPE_SECRET_KEY').startswith(('sk_test_', 'rk_test_')),
@@ -101,6 +108,8 @@ def register_billing(app):
         who=account()
         if who.get('role') == 'owner':
             return redirect(url_for('billing'),code=303)
+        if not test_checkout_allowed(who):
+            return 'Checkout is limited to the operator test account until live payments are enabled.',403
         try:
             base, prices=configured()
             kind=request.form.get('kind','subscription')
