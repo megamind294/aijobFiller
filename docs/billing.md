@@ -6,6 +6,8 @@ Customer policy: payment is required before workspace use. There is no free tria
 
 Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BILLING_PUBLIC_URL` in the service environment. The public URL must use HTTPS and must be the canonical application URL; it is never derived from the browser Host header. Keep secret values out of source control. Use Stripe test-mode credentials and CLI forwarding for deployment verification before enabling live mode.
 
+When using `sk_test_` or `rk_test_`, checkout is restricted to account IDs explicitly listed in the server-side `BILLING_TEST_ACCOUNT_IDS` setting (comma-separated). Ordinary public customer accounts cannot use sandbox payments to unlock access. The billing page clearly labels test mode. Owner access remains free. Live activation requires a live API key and a signing secret from the corresponding live-mode webhook; test webhook secrets do not configure live event delivery.
+
 Save `billing-fx.json` under `JOBPILOT_HOME` with `pln_per_usd` (a positive decimal string), `date` (ISO calendar date), and `source` (the operator's actual source attribution). Supply an actual observed exchange rate, not a placeholder. Flask deployments can instead set `BILLING_FX_RATE` to the same mapping. Every displayed subscription price includes 20 PLN converted to USD once per billing package. Top-ups grant one application credit for each $0.10 of base value (minimum $5); the markup buys no credits.
 
 Register a Stripe **snapshot** webhook at `/billing/webhook` and use API version `2025-02-24.acacia` to match the explicitly pinned REST request contract. Subscribe to:
