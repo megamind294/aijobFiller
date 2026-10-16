@@ -13,6 +13,8 @@ class WebAccountTests(WebCase):
         store = self.app.extensions['jobpilot_store']
         key = store.add({'url': 'https://example.com/private-role', 'title': 'Owner private role', 'company': 'Private'})
         account = self.app.extensions['jobpilot_accounts'].identity('email', 'customer@example.com', 'customer@example.com', verified=True)
+        from jobpilot.billing import CreditLedger
+        CreditLedger(self.home).grant(account['id'], 'paid-customer-fixture', 1, 'wallet')
         with self.client.session_transaction() as session:
             session['account_id'] = account['id']
             session['auth_version'] = account['version']

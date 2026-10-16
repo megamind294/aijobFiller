@@ -55,6 +55,11 @@ def authenticate_request(required=None):
         abort(response)
     g.jobpilot_account = account
     g.jobpilot_token = grant
+    from .billing import CreditLedger
+    if account.get('role') != 'owner' and not CreditLedger(current_app.config['JOBPILOT_HOME']).has_paid_access(account['id']):
+        response = jsonify(error='payment_required', message='A paid JobPilot plan or purchased credits are required.', billing_url=public_base() + '/billing')
+        response.status_code = 402
+        abort(response)
     return account
 
 

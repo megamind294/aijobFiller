@@ -74,7 +74,9 @@ def init_auth(app):
     def require_session():
         if request.endpoint in PROTOCOL_ENDPOINTS:
             return None  # Each protocol handler verifies its bearer token, signature, or OAuth grant.
-        if request.endpoint in ('login', 'static', 'favicon', 'account_signin', 'account_code', 'account_verify', 'account_google', 'account_google_callback'):
+        if request.endpoint in ('login', 'static', 'favicon', 'account_register', 'account_signin', 'account_code', 'account_verify', 'account_google', 'account_google_callback'):
+            if request.endpoint not in ('static', 'favicon') and session.get('auth_version'):
+                authenticated()
             return None
         if not authenticated():
             # Anonymous sessions contain the login form's CSRF token. A
@@ -85,6 +87,11 @@ def init_auth(app):
             if request.endpoint == 'mcp.authorize' and request.method == 'GET':
                 session['post_login_redirect'] = request.full_path
             return redirect(url_for('login'))
+        if request.endpoint not in ('logout', 'billing', 'billing_checkout', 'billing_portal', 'settings', 'password'):
+            from .billing import CreditLedger
+            account = g.jobpilot_account
+            if account.get('role') != 'owner' and not CreditLedger(app.config['JOBPILOT_HOME']).has_paid_access(account['id']):
+                return redirect(url_for('billing'))
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():

@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% block title %}Create account{% endblock %}{% block content %}
+<div class="auth-layout"><section class="auth-story"><a class="brand" href="/login">JobPilot ↗</a><p class="eyebrow">YOUR NEXT CHAPTER</p><h1>Your search starts here.</h1><p>Keep your resume, opportunities, applications and recruiter conversations in one private workspace.</p></section>
+<section class="auth-card"><h2>Create your account</h2><p>Register first, then choose a paid plan or application credits. Creating an account does not charge you.</p>
+{% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="email" maxlength="254" required value="{{ request.form.get('email','') }}"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="14" maxlength="256" required><p class="field-hint">At least 14 characters. A longer passphrase works well.</p><label for="confirm-password">Confirm password</label><input id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="14" maxlength="256" required><button class="button primary full">Create account</button></form>
+<p>Already registered? <a href="/signin">Sign in →</a></p><p><a href="/login">Owner sign-in →</a></p></section></div>
+{% endblock %}

@@ -91,6 +91,8 @@ class WebInboxCase(WebCase):
         box.ingest([dict(id='private', text='Owner private message', timestamp=1)])
         accounts = self.app.extensions['jobpilot_accounts']
         account = accounts.identity('email', 'other@example.test', 'other@example.test', verified=True)
+        from jobpilot.billing import CreditLedger
+        CreditLedger(self.home).grant(account['id'], 'paid-isolation-fixture', 1, 'wallet')
         with self.client.session_transaction() as sess:
             sess['account_id'] = account['id']
             sess['auth_version'] = account['version']

@@ -29,6 +29,8 @@ def create_app(config=None):
         WTF_CSRF_SSL_STRICT=False,
         MCP_PUBLIC_URL=os.environ.get('MCP_PUBLIC_URL') or (
             'https://' + os.environ['JOBPILOT_WEB_HOST'] if os.environ.get('JOBPILOT_WEB_HOST') else ''),
+        BILLING_PUBLIC_URL=os.environ.get('BILLING_PUBLIC_URL') or (
+            'https://' + os.environ['JOBPILOT_WEB_HOST'] if os.environ.get('JOBPILOT_WEB_HOST') else ''),
     )
     if config:
         app.config.update(config)
@@ -49,7 +51,6 @@ def create_app(config=None):
         credits = {'available': 0, 'reserved': 0}
         if account.get('role') != 'owner':
             ledger = CreditLedger(home)
-            ledger.grant(account['id'], 'free:' + account['id'], 25, 'free')
             credits = ledger.balance(account['id'])
         initials = 'JP' if account.get('role') == 'owner' else (account.get('email', '')[:2].upper() or 'ME')
         return {'workspace_account': account, 'workspace_credits': credits, 'workspace_initials': initials}

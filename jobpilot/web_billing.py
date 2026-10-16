@@ -82,8 +82,6 @@ def register_billing(app):
     def billing():
         who=account()
         owner=who.get('role') == 'owner'
-        if not owner:
-            ledger.grant(who['id'],'free:' + who['id'],25,'free')
         error=None
         try:
             _, prices=configured()
@@ -94,6 +92,8 @@ def register_billing(app):
             except ValueError:
                 prices={}
         return render_template('billing.html', prices=prices, configuration_error=error, owner=owner,
+            paid_access=owner or ledger.has_paid_access(who['id']),
+            test_payments=setting('STRIPE_SECRET_KEY').startswith(('sk_test_', 'rk_test_')),
             balance=ledger.balance(who['id']), subscription=ledger.subscription(who['id']), history=ledger.history(who['id']), attempt=secrets.token_urlsafe(24))
 
     @app.post('/billing/checkout')
@@ -101,7 +101,6 @@ def register_billing(app):
         who=account()
         if who.get('role') == 'owner':
             return redirect(url_for('billing'),code=303)
-        ledger.grant(who['id'],'free:' + who['id'],25,'free')
         try:
             base, prices=configured()
             kind=request.form.get('kind','subscription')

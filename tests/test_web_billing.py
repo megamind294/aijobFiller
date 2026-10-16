@@ -35,7 +35,7 @@ class BillingRouteTests(unittest.TestCase):
         self.assertEqual(second.status_code,303)
         self.assertEqual(provider.call_count,1)
         self.assertEqual(provider.call_args.args[1]['line_items[0][price_data][unit_amount]'],'16400')
-        self.assertEqual(self.app.extensions['jobpilot_billing'].balance(self.account['id'])['available'],25)
+        self.assertEqual(self.app.extensions['jobpilot_billing'].balance(self.account['id'])['available'],0)
 
     def test_missing_config_and_owner_never_calls_provider(self):
         self.app.config['STRIPE_SECRET_KEY']=''
@@ -53,7 +53,7 @@ class BillingRouteTests(unittest.TestCase):
         with ledger.connect() as db:
             self.assertEqual(db.execute('SELECT credits FROM checkout_orders').fetchone()[0],200)
         self.client.get('/billing?success=1')
-        self.assertEqual(ledger.balance(self.account['id'])['available'],25)
+        self.assertEqual(ledger.balance(self.account['id'])['available'],0)
 
     def test_webhook_requires_signature_even_without_csrf(self):
         self.app.config['WTF_CSRF_ENABLED']=True
@@ -72,7 +72,7 @@ class BillingRouteTests(unittest.TestCase):
         for _ in range(2):
             response=self.client.post('/billing/webhook',data=body,headers={'Stripe-Signature':f't={stamp},v1={digest}'})
             self.assertEqual(response.status_code,204)
-        self.assertEqual(self.app.extensions['jobpilot_billing'].balance(self.account['id'])['available'],225)
+        self.assertEqual(self.app.extensions['jobpilot_billing'].balance(self.account['id'])['available'],200)
         # Browser payment routes retain CSRF protection.
         self.assertEqual(self.client.post('/billing/checkout',data={'kind':'wallet'}).status_code,400)
 

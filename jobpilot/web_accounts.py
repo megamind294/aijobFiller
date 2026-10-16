@@ -61,9 +61,35 @@ def register_accounts(app):
         session.permanent = True
         return redirect(target)
 
-    @app.get('/signin')
+    @app.route('/register', methods=['GET', 'POST'])
+    def account_register():
+        error = None
+        if request.method == 'POST':
+            try:
+                accounts.authentication_attempt(request.remote_addr or 'unknown', 'register', 5, 3600)
+                password = request.form.get('password', '')
+                if password != request.form.get('confirm_password', ''):
+                    raise ValueError('Passwords do not match.')
+                return sign_in(accounts.register_password(request.form.get('email', ''), password))
+            except ValueError as exc:
+                error = str(exc)
+        return render_template('register.html', error=error), 400 if error else 200
+
+    @app.route('/signin', methods=['GET', 'POST'])
     def account_signin():
-        return render_template('signin.html', providers=provider_configuration(), awaiting=bool(session.get('login_challenge')))
+        error = None
+        status = 200
+        if request.method == 'POST':
+            try:
+                accounts.authentication_attempt(request.remote_addr or 'unknown', 'password', 10, 300)
+                account = accounts.password_account(request.form.get('email', ''), request.form.get('password', ''))
+                if account:
+                    return sign_in(account)
+                error, status = 'Invalid email or password.', 401
+            except ValueError as exc:
+                error, status = str(exc), 429
+        return render_template('signin.html', error=error, providers=provider_configuration(),
+                               awaiting=bool(session.get('login_challenge'))), status
 
     @app.post('/signin/code')
     def account_code():

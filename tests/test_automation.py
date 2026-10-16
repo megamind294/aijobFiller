@@ -15,7 +15,7 @@ class AutomationTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.store = Store(self.root)
         self.ledger = CreditLedger(self.root)
-        self.ledger.grant('user', 'free', 5, 'free')
+        self.ledger.grant('user', 'paid-fixture', 5, 'wallet')
         write_json(self.root / 'profile.json', PROFILE)
         self.automation = Automation(self.store, self.ledger, 'user', entitled=True)
         self.job = self.store.add({'url': 'https://example.com/job', 'title': 'React engineer', 'company': 'Example', 'description': 'React TypeScript', 'location': 'Poland'})

@@ -66,6 +66,8 @@ class TransportTests(unittest.TestCase):
     def test_api_bearer_scope_isolation_and_no_cookie_fallback(self):
         from jobpilot.core import write_json
         account = self.app.extensions['jobpilot_accounts'].identity('email', 'alice@example.com', verified=True)
+        from jobpilot.billing import CreditLedger
+        CreditLedger(self.home).grant(account['id'], 'paid-isolation-fixture', 1, 'wallet')
         home = self.home / 'accounts' / account['id']
         write_json(self.home / 'profile.json', {'summary': 'owner secret'})
         write_json(home / 'profile.json', {'summary': 'alice', 'api_key': 'hidden'})
@@ -168,7 +170,7 @@ class TransportTests(unittest.TestCase):
         run = apps.prepare(job_id, profile, 'shared-queue', cover_letter=False, optimization='off')
         ledger = CreditLedger(self.home)
         self.app.extensions['jobpilot_credit_ledger'] = ledger
-        ledger.grant(account['id'], 'test-credit-grant', 3, 'free')
+        ledger.grant(account['id'], 'test-credit-grant', 3, 'wallet')
         headers = {'Authorization': 'Bearer ' + self.token(account, ['applications:write'])}
         approval = {'confirmed': True, 'application_id': run['id'], 'document_hash': run['document_hash'], 'profile_version': run['profile_hash'], 'job_version': run['job_hash']}
         for _ in range(2):

@@ -5,7 +5,9 @@
 {% if owner %}
 <section class="panel"><h2>Admin · Unlimited</h2><p>Your verified owner role includes all tiers without customer checkout or credit deductions. Operational daily limits still apply.</p></section>
 {% else %}
-<section class="panel"><h2>{{ balance.available }} available credits</h2><p>{{ balance.reserved }} reserved · Current plan: {{ subscription.tier|title }} · {{ subscription.status }}</p><p>Free applications: 25 once per account. Subscription credits refresh monthly and expire at the next monthly boundary. Wallet credits do not expire.</p>
+{% if test_payments %}<div class="notice" role="status">Test payments only. No real money is collected in this environment.</div>{% endif %}
+{% if not paid_access %}<div class="notice" role="status"><h2>Payment required</h2><p>Choose a subscription or purchase application credits to unlock your workspace. Registration does not charge you; access starts after payment is confirmed.</p></div>{% endif %}
+<section class="panel"><h2>{{ balance.available }} available credits</h2><p>{{ balance.reserved }} reserved · Current plan: {{ subscription.tier|title }} · {{ subscription.status }}</p><p>Subscription credits refresh monthly and expire at the next monthly boundary. Purchased credits do not expire. Customer accounts do not include a free trial.</p>
 {% if subscription.customer_id %}<form method="post" action="{{ url_for('billing_portal') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Manage payments &amp; cancellation</button></form>{% endif %}</section>
 {% if configuration_error %}<div class="notice" role="status">{{ configuration_error }} Checkout becomes available after the operator completes billing setup.</div>{% endif %}
 <div class="cards-grid">

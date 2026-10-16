@@ -2,6 +2,8 @@
 
 Billing stays configuration-required until an operator configures Stripe and a dated exchange rate. Configuration alone creates no Stripe resources and charges no payments. Opening a success return URL never grants credits.
 
+Customer policy: payment is required before workspace use. There is no free trial. The verified owner bypasses customer payment and credit deductions. Other accounts are redirected to billing until a signed paid invoice or paid checkout establishes a paid period or purchased credits. Web/API/MCP and background workers enforce this server-side; old free credits cannot unlock or fund work. Customers may still open billing/account settings and sign out. A paid subscription retains workspace access through its confirmed paid period even when application credits are exhausted; new applications still need available credits.
+
 Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BILLING_PUBLIC_URL` in the service environment. The public URL must use HTTPS and must be the canonical application URL; it is never derived from the browser Host header. Keep secret values out of source control. Use Stripe test-mode credentials and CLI forwarding for deployment verification before enabling live mode.
 
 Save `billing-fx.json` under `JOBPILOT_HOME` with `pln_per_usd` (a positive decimal string), `date` (ISO calendar date), and `source` (the operator's actual source attribution). Supply an actual observed exchange rate, not a placeholder. Flask deployments can instead set `BILLING_FX_RATE` to the same mapping. Every displayed subscription price includes 20 PLN converted to USD once per billing package. Top-ups grant one application credit for each $0.10 of base value (minimum $5); the markup buys no credits.

@@ -23,6 +23,10 @@ class Accounts:
                 CREATE TABLE IF NOT EXISTS login_challenges (
                     id TEXT PRIMARY KEY, provider TEXT, subject TEXT, digest TEXT,
                     created REAL, expires REAL, attempts INTEGER DEFAULT 0, consumed INTEGER DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS password_accounts (
+                    email TEXT PRIMARY KEY, account_id TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS authentication_attempts (
+                    ip TEXT NOT NULL, kind TEXT NOT NULL, created REAL NOT NULL);
             ''')
 
     @contextmanager
@@ -39,6 +43,54 @@ class Accounts:
         with self.connect() as db:
             row = db.execute('SELECT * FROM accounts WHERE id=?', (identifier,)).fetchone()
         return dict(row) if row else None
+
+    @staticmethod
+    def normalize_email(email):
+        email = email.strip().casefold()
+        if len(email) > 254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
+            raise ValueError('Enter a valid email address.')
+        return email
+
+    def register_password(self, email, password):
+        from werkzeug.security import generate_password_hash
+        email = self.normalize_email(email)
+        if not isinstance(password, str) or not 14 <= len(password) <= 256:
+            raise ValueError('Use a password of 14–256 characters.')
+        hashed = generate_password_hash(password)
+        identifier = secrets.token_hex(16)
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute('SELECT id FROM accounts WHERE email=?', (email,)).fetchone():
+                raise ValueError('This email is already registered. Sign in with your existing method.')
+            db.execute('INSERT INTO accounts VALUES(?,?,?,?,?)',
+                       (identifier, email, 'customer', secrets.token_hex(24), time.time()))
+            db.execute('INSERT INTO password_accounts VALUES(?,?,?)', (email, identifier, hashed))
+        # Password credentials do not establish ownership of an external mailbox.
+        # Verified Google/email identities must be linked through their own flows.
+        return self.get(identifier)
+
+    def password_account(self, email, password):
+        from werkzeug.security import check_password_hash
+        try:
+            email = self.normalize_email(email)
+        except ValueError:
+            email = ''
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM password_accounts WHERE email=?', (email,)).fetchone()
+        dummy = 'scrypt:32768:8:1$jobpilotdummy$' + '0' * 128
+        valid = check_password_hash(row['password_hash'] if row else dummy, password[:256])
+        return self.get(row['account_id']) if row and valid and len(password) <= 256 else None
+
+    def authentication_attempt(self, ip, kind, limit, window):
+        stamp = time.time()
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('DELETE FROM authentication_attempts WHERE created<?', (stamp - 3600,))
+            count = db.execute('SELECT COUNT(*) FROM authentication_attempts WHERE ip=? AND kind=? AND created>?',
+                               (ip, kind, stamp - window)).fetchone()[0]
+            if count >= limit:
+                raise ValueError('Too many attempts. Please try again later.')
+            db.execute('INSERT INTO authentication_attempts VALUES(?,?,?)', (ip, kind, stamp))
 
     def identity(self, provider, subject, email='', verified=False):
         if provider not in ('google', 'email', 'phone') or not verified or not isinstance(subject, str) or not 1 <= len(subject) <= 320:

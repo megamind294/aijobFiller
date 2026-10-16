@@ -108,12 +108,23 @@ class CreditLedger:
             db.execute('INSERT OR IGNORE INTO credit_buckets(account_id,grant_key,kind,credits,expires,created) VALUES(?,?,?,?,?,?)',
                        (account_id, grant_key, kind, credits, expires, time.time()))
 
+    def has_paid_access(self, account_id, stamp=None):
+        """Only paid periods or usable purchased credits unlock customer access."""
+        stamp = time.time() if stamp is None else stamp
+        self.refresh(account_id, stamp)
+        with self.connect() as db:
+            paid = db.execute("SELECT 1 FROM subscriptions WHERE account_id=? AND status IN ('active','past_due','canceled') AND paid_start<=? AND paid_through>?",
+                              (account_id, stamp, stamp)).fetchone()
+            wallet = db.execute("SELECT 1 FROM credit_buckets WHERE account_id=? AND kind IN ('wallet','subscription','refund') AND credits>0 AND (expires IS NULL OR expires>?)",
+                                (account_id, stamp)).fetchone()
+        return bool(paid or wallet)
+
     def balance(self, account_id):
         self.refresh(account_id)
         with self.connect() as db:
             db.execute('BEGIN')
-            credits = db.execute('SELECT COALESCE(SUM(credits),0) FROM credit_buckets WHERE account_id=? AND (expires IS NULL OR expires>?)', (account_id, time.time())).fetchone()[0]
-            reserved = db.execute("SELECT COUNT(*) FROM credit_reservations r JOIN credit_buckets b ON b.id=r.bucket_id WHERE r.account_id=? AND r.state='reserved' AND (b.expires IS NULL OR b.expires>?)", (account_id, time.time())).fetchone()[0]
+            credits = db.execute("SELECT COALESCE(SUM(credits),0) FROM credit_buckets WHERE account_id=? AND kind!='free' AND (expires IS NULL OR expires>?)", (account_id, time.time())).fetchone()[0]
+            reserved = db.execute("SELECT COUNT(*) FROM credit_reservations r JOIN credit_buckets b ON b.id=r.bucket_id WHERE r.account_id=? AND b.kind!='free' AND r.state='reserved' AND (b.expires IS NULL OR b.expires>?)", (account_id, time.time())).fetchone()[0]
         return {'available': max(0, credits - reserved), 'reserved': reserved}
 
     def reserve(self, account_id, reference, day, daily_cap, owner=False):
@@ -136,7 +147,7 @@ class CreditLedger:
                 raise ValueError('Your shared daily application cap has been reached.')
             bucket_id = None
             if not owner:
-                row = db.execute("""SELECT b.id FROM credit_buckets b WHERE b.account_id=? AND (b.expires IS NULL OR b.expires>?)
+                row = db.execute("""SELECT b.id FROM credit_buckets b WHERE b.account_id=? AND b.kind!='free' AND (b.expires IS NULL OR b.expires>?)
                     AND b.credits>(SELECT COUNT(*) FROM credit_reservations r WHERE r.bucket_id=b.id AND r.state='reserved')
                     ORDER BY b.expires IS NULL,b.expires,b.id LIMIT 1""", (account_id, time.time())).fetchone()
                 if not row:
@@ -163,16 +174,16 @@ class CreditLedger:
             if not row:
                 raise ValueError('Reservation not found for this account.')
             if row['state'] == 'charged' and row['bucket_id'] is not None:
-                bucket = db.execute('SELECT expires FROM credit_buckets WHERE id=?', (row['bucket_id'],)).fetchone()
+                bucket = db.execute('SELECT expires,kind FROM credit_buckets WHERE id=?', (row['bucket_id'],)).fetchone()
                 db.execute('INSERT OR IGNORE INTO credit_buckets(account_id,grant_key,kind,credits,expires,created) VALUES(?,?,?,?,?,?)',
-                           (account_id, 'refund:' + reference, 'refund', 1, bucket['expires'], time.time()))
+                           (account_id, 'refund:' + reference, 'free' if bucket['kind']=='free' else 'refund', 1, bucket['expires'], time.time()))
             if row['state'] in ('charged', 'reserved'):
                 db.execute("UPDATE credit_reservations SET state='refunded',updated=? WHERE reference=?", (time.time(), reference))
 
     def subscription(self, account_id):
         with self.connect() as db:
             row = db.execute('SELECT * FROM subscriptions WHERE account_id=?', (account_id,)).fetchone()
-        return dict(row) if row else {'tier': 'free', 'status': 'active', 'cycle_end': None}
+        return dict(row) if row else {'tier': 'unsubscribed', 'status': 'payment_required', 'cycle_end': None}
 
     def history(self, account_id):
         with self.connect() as db:
