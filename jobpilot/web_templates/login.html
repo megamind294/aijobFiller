@@ -1,28 +1,18 @@
-{% extends 'base.html' %}{% block title %}Sign in{% endblock %}{% block content %}
+{% extends 'base.html' %}{% block title %}Owner sign in{% endblock %}{% block content %}
 <div class="auth-layout">
-  <section class="auth-story">
-    <a class="brand" href="/login">JobPilot ↗</a>
-    <p class="eyebrow">A LITTLE STRUCTURE. A BIG NEXT STEP.</p>
-    <h1>Your next chapter<br>starts here.</h1>
-    <p>A calmer place to organize your search, shape your resume, and keep every opportunity in view.</p>
-    <p class="muted">Your profile. Your progress. Your pace.</p>
-  </section>
-  <section class="auth-card">
-    <span class="eyebrow">WELCOME BACK</span>
-    <h2>Sign in to your workspace</h2>
-    <p class="muted">Your job search, all in one place.</p>
-    {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
-    <form method="post">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label for="username">Username</label>
-      <input id="username" name="username" autocomplete="username" required maxlength="100">
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
-      <button class="button primary full" type="submit">Open my workspace <span>→</span></button>
-    </form>
-    <p class="fine-print">Private access · Secure connection</p>
-    <p>New customer? <a href="/register">Create an account →</a> or <a href="/signin">sign in</a>.</p>
-    <p class="field-hint">Paid plans unlock your workspace. Owner access is separate and free.</p>
-  </section>
-</div>
+{% include 'auth_story.html' %}
+<section class="auth-card" aria-labelledby="auth-form-title">
+<nav class="auth-tabs" aria-label="Account type"><a href="/signin">Customer</a><a href="/login" aria-current="page">Owner</a></nav>
+<p class="eyebrow">WELCOME BACK</p><h2 id="auth-form-title">Open your workspace.</h2>
+<p class="auth-description">Sign in with your private owner account.</p>
+{% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+<form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label for="username">Username</label><input id="username" name="username" autocomplete="username" required maxlength="100" value="{{ request.form.get('username','') }}">
+<label for="password">Password</label><div class="password-field"><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256"><button type="button" class="password-toggle" data-password-toggle="password" aria-label="Show password" aria-pressed="false">Show</button></div>
+<button class="button primary full" type="submit">Open my workspace <span aria-hidden="true">↗</span></button>
+</form>
+<p class="auth-account-link">New to JobPilot? <a href="/register">Create an account</a></p>
+<p class="auth-footnote">Owner access is free. Customer accounts use a paid plan or purchased credits.</p>
+</section></div>
 {% endblock %}

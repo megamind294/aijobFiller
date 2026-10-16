@@ -1,4 +1,17 @@
 'use strict';
+document.querySelectorAll('[data-password-toggle]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const input = document.getElementById(button.dataset.passwordToggle);
+    if (!input) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    button.textContent = show ? 'Hide' : 'Show';
+    button.setAttribute('aria-pressed', String(show));
+    const name = input.id === 'confirm-password' ? 'confirmation password' : 'password';
+    button.setAttribute('aria-label', `${show ? 'Hide' : 'Show'} ${name}`);
+  });
+});
+
 document.querySelectorAll('form').forEach((form) => {
   form.addEventListener('submit', (event) => {
     const file = form.querySelector('input[type="file"]');

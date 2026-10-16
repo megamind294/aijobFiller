@@ -2,6 +2,13 @@ from web_support import WebCase
 
 
 class WebAuthTests(WebCase):
+    def test_signed_in_owner_is_not_shown_another_login_form(self):
+        self.login()
+        for path in ('/login', '/signin'):
+            result = self.client.get(path, base_url='https://localhost')
+            self.assertEqual(result.status_code, 302)
+            self.assertEqual(result.headers['Location'], '/')
+
     def test_private_routes_require_login(self):
         for path in ('/', '/jobs', '/profile', '/sources', '/export', '/jobs/abc/resume'):
             with self.subTest(path=path):

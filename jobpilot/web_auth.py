@@ -76,7 +76,8 @@ def init_auth(app):
             return None  # Each protocol handler verifies its bearer token, signature, or OAuth grant.
         if request.endpoint in ('login', 'static', 'favicon', 'account_register', 'account_signin', 'account_code', 'account_verify', 'account_google', 'account_google_callback'):
             if request.endpoint not in ('static', 'favicon') and session.get('auth_version'):
-                authenticated()
+                if authenticated() and request.method == 'GET' and request.endpoint in ('login', 'account_signin'):
+                    return redirect(url_for('dashboard'))
             return None
         if not authenticated():
             # Anonymous sessions contain the login form's CSRF token. A

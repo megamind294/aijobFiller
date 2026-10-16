@@ -2,6 +2,15 @@ from web_support import WebCase
 
 
 class WebAccountTests(WebCase):
+    def test_unconfigured_google_does_not_offer_a_clickable_dead_end(self):
+        from unittest.mock import patch
+        with patch('jobpilot.web_accounts.provider_configuration', return_value={
+                'google':False, 'email':False, 'phone':False}):
+            page = self.client.get('/signin', base_url='https://localhost').get_data(as_text=True)
+        self.assertNotIn('href="/signin/google"', page)
+        self.assertNotIn('action="/signin/code"', page)
+        self.assertIn('Google', page)
+
     def test_signin_is_public_and_unconfigured_provider_is_honest(self):
         response = self.client.get('/signin', base_url='https://localhost')
         self.assertEqual(response.status_code, 200)

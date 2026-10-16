@@ -1,0 +1,45 @@
+:root{font-family:"Segoe UI",Arial,sans-serif;color:#173d31;background:#edf2ee}
+body{padding:12px}
+.auth-main{background:#fff;border:1px solid #dde6df;border-radius:22px;min-height:calc(100dvh - 24px);overflow:hidden}
+.auth-main>.page-content{padding:0;max-width:none}
+.auth-layout{display:grid;grid-template-columns:1.05fr 1fr;gap:0;min-height:calc(100dvh - 26px);max-width:1440px;margin:0 auto;align-items:stretch}
+.auth-story{display:flex;flex-direction:column;background:#e8f0e9;padding:48px clamp(28px,4vw,64px);margin:18px;border-radius:16px;position:relative;overflow:hidden}
+.auth-story .brand{padding:0;margin:0;color:#173d31;font-size:28px;font-weight:750;letter-spacing:-1px;gap:10px;align-self:flex-start}
+.auth-story .brand span{font-size:29px;margin:0}
+.auth-story-body{margin:auto 0;padding:56px 0 36px}
+.auth-story .eyebrow{font-size:11px;letter-spacing:2px;color:#456151;margin-bottom:18px}
+.auth-story h1{font-size:clamp(36px,3.7vw,54px);font-weight:650;line-height:1.1;letter-spacing:-2px;margin:0 0 24px;color:#173d31}
+.auth-story-description{font-size:16px;line-height:1.7;color:#4d6254;max-width:420px;margin-bottom:30px}
+.auth-benefits{list-style:none;margin:0;padding:0;display:grid;gap:22px;max-width:430px}
+.auth-benefits li{display:flex;gap:16px;align-items:flex-start}
+.auth-benefits li>span{display:grid;place-items:center;flex-shrink:0;width:34px;height:34px;border:1px solid #c6d7ca;border-radius:50%;font-size:11px;color:#456151}
+.auth-benefits strong{display:block;font-size:14px;font-weight:650;margin-bottom:3px}
+.auth-benefits p{color:#5c6e61;font-size:13px;line-height:1.5;margin:0}
+.auth-story-footer{font-size:12px;color:#5c6e61;margin:0;padding-top:20px}
+.auth-card{width:100%;max-width:472px;justify-self:center;align-self:center;padding:48px 36px;margin:0}
+.auth-card .eyebrow{font-size:10px;letter-spacing:1.7px;margin:28px 0 12px}
+.auth-card h2{font-size:30px;line-height:1.2;font-weight:650;letter-spacing:-.8px;margin:0 0 12px}
+.auth-description{font-size:14px;line-height:1.65;color:#637268;margin:0 0 28px}
+.auth-tabs{display:flex;gap:4px;padding:4px;background:#f0f4f0;border-radius:12px;width:100%;margin-bottom:32px}
+.auth-tabs a{flex:1;text-align:center;padding:9px 12px;font-size:13px;color:#617166;border-radius:9px}
+.auth-tabs a[aria-current=page]{background:#fff;color:#173d31;font-weight:650;box-shadow:0 1px 4px #163d3010}
+.auth-card form{margin:24px 0}
+.auth-card label{display:block;font-size:13px;font-weight:600;margin:18px 0 8px}
+.auth-card input,.auth-card select{width:100%;min-height:48px;border:1px solid #d4ded6;border-radius:10px;padding:12px 14px;margin:0;font-size:15px;background:#fff;color:#1e3528}
+.auth-card input::placeholder{color:#8a968d}
+.auth-card input:focus{border-color:#386c50;outline:3px solid #e4eee6}
+.password-field{position:relative}
+.password-field input{padding-right:70px}
+.password-toggle{position:absolute;right:5px;top:5px;bottom:5px;padding:0 12px;border:0;background:transparent;color:#38614a;font-size:12px;font-weight:650;border-radius:7px;min-width:54px}
+.password-toggle:hover{background:#edf3ee}
+.auth-card .button.full{width:100%;justify-content:space-between;min-height:48px;padding:12px 18px;border-radius:10px;margin:24px 0 0;font-size:14px;font-weight:600}
+.auth-card .field-hint,.auth-footnote{font-size:12px;line-height:1.6;color:#6b796f;margin:9px 0 0}
+.auth-account-link{font-size:13px;text-align:center;margin:24px 0 16px;color:#637268}
+.auth-account-link a{font-weight:650;color:#173d31}
+.auth-footnote{text-align:center}
+.auth-back{display:inline-block;font-size:12px;margin-bottom:6px}
+.auth-other-methods{margin:22px 0;font-size:13px}
+.auth-other-methods summary{cursor:pointer;padding:8px 0}
+.auth-card .notice{font-size:13px;line-height:1.5;margin:18px 0;border-radius:10px}
+@media(max-width:800px){body{padding:6px}.auth-main{border-radius:16px;min-height:calc(100dvh - 12px)}.auth-layout{grid-template-columns:1fr;min-height:auto}.auth-story{margin:10px;padding:26px 24px;border-radius:12px}.auth-story .brand{font-size:25px}.auth-story-body{margin:0;padding:32px 0 0}.auth-story h1{font-size:36px;letter-spacing:-1.3px;margin-bottom:14px}.auth-story-description{font-size:14px;margin:0}.auth-benefits,.auth-story-footer{display:none}.auth-card{max-width:480px;padding:28px 26px 36px}.auth-tabs{margin-bottom:24px}.auth-card h2{font-size:27px}.auth-card .eyebrow{margin-top:18px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
