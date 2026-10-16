@@ -116,6 +116,8 @@ class ApplicationWorker:
         attempted = False
         try:
             run = self.apps.get(identifier)
+            if self.ledger and self.account_id != 'owner':
+                self.ledger.assert_paid_reservation(self.account_id, 'application:' + identifier)
             self.apps.assert_current(run)
             if run['state'] in ('SUBMITTED', 'SUBMISSION_UNCONFIRMED', 'SUBMITTING'):
                 raise ValueError('Application already submitted or uncertain; automatic retry is blocked.')

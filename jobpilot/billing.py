@@ -139,6 +139,8 @@ class CreditLedger:
             if old:
                 if old['account_id'] != account_id:
                     raise ValueError('Reservation belongs to another account.')
+                if not owner and old['state'] == 'reserved':
+                    self.assert_paid_reservation(account_id, reference)
                 if old['state'] in ('reserved', 'charged'):
                     return
                 raise ValueError('This reservation was already released; use an explicitly new application attempt.')
@@ -154,6 +156,14 @@ class CreditLedger:
                     raise ValueError('No available application credits.')
                 bucket_id = row['id']
             db.execute('INSERT INTO credit_reservations VALUES(?,?,?,?,?,?,?)', (reference, account_id, bucket_id, day, 'reserved', time.time(), time.time()))
+
+    def assert_paid_reservation(self, account_id, reference):
+        with self.connect() as db:
+            row = db.execute("""SELECT 1 FROM credit_reservations r JOIN credit_buckets b ON b.id=r.bucket_id
+                WHERE r.reference=? AND r.account_id=? AND r.state='reserved' AND b.kind!='free'
+                AND (b.expires IS NULL OR b.expires>?)""", (reference, account_id, time.time())).fetchone()
+        if not row:
+            raise ValueError('This application needs a valid reservation of paid credits. Prepare a new review.')
 
     def settle(self, account_id, reference, success):
         with self.connect() as db:

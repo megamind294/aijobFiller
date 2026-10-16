@@ -79,3 +79,35 @@ class PaidAccessTests(WebCase):
         worker = ApplicationWorker(store, ledger=self.ledger, account_id=self.account['id'])
         self.assertFalse(worker.run_once())
         self.assertEqual(queue.rows()[0]['state'], 'QUEUED')
+
+    def legacy_reservation(self, reference):
+        self.ledger.grant(self.account['id'], 'legacy-free', 25, 'free')
+        self.ledger.grant(self.account['id'], 'purchased-fixture', 2, 'wallet')
+        with self.ledger.connect() as db:
+            bucket = db.execute("SELECT id FROM credit_buckets WHERE grant_key='legacy-free'").fetchone()[0]
+            db.execute('INSERT INTO credit_reservations VALUES(?,?,?,?,?,?,?)',
+                       (reference, self.account['id'], bucket, '2026-10-16', 'reserved', time.time(), time.time()))
+
+    def test_existing_free_reservation_is_rejected_after_purchase(self):
+        self.legacy_reservation('legacy-application')
+        with self.assertRaises(ValueError):
+            self.ledger.reserve(self.account['id'], 'legacy-application', '2026-10-16', 10)
+
+    def test_queued_free_reservation_cannot_execute_after_purchase(self):
+        from jobpilot.core import Store, write_json
+        from jobpilot.applications import Applications
+        from jobpilot.worker import ApplicationWorker, TaskQueue
+        from test_workflow import PROFILE
+        store = Store(self.home / 'accounts' / self.account['id'])
+        write_json(store.home / 'profile.json', PROFILE)
+        job = store.add({'url':'https://example.com/job','company':'Example','title':'React','description':'React'})
+        apps = Applications(store)
+        run = apps.prepare(job, PROFILE, 'legacy-queued')
+        apps.approve_documents(run['id'], run['document_hash'])
+        self.legacy_reservation('application:' + run['id'])
+        queue = TaskQueue(store)
+        queue.enqueue(run['id'], 'fill')
+        ApplicationWorker(store, ledger=self.ledger, account_id=self.account['id']).run_once()
+        self.assertIn('paid credits', apps.get(run['id'])['error'])
+        self.assertEqual(self.ledger.balance(self.account['id'])['available'], 2)
+        self.assertFalse(queue.rows()[0]['attempted'])
