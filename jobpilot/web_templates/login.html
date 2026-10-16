@@ -4,7 +4,7 @@
 <section class="auth-card" aria-labelledby="auth-form-title">
 <nav class="auth-tabs" aria-label="Account type"><a href="/signin">Customer</a><a href="/login" aria-current="page">Owner</a></nav>
 <p class="eyebrow">WELCOME BACK</p><h2 id="auth-form-title">Open your workspace.</h2>
-<p class="auth-description">Sign in with your private owner account.</p>
+<p class="auth-description">Use only the private JobPilot owner account created for this installation. Do not enter your Google, Microsoft, employer, or bank password here.</p>
 {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
 <form method="post">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -14,5 +14,6 @@
 </form>
 <p class="auth-account-link">New to JobPilot? <a href="/register">Create an account</a></p>
 <p class="auth-footnote">Owner access is free. Customer accounts use a paid plan or purchased credits.</p>
+<p class="auth-account-link"><a href="/">About JobPilot</a> · <a href="/privacy">Privacy and data use</a></p>
 </section></div>
 {% endblock %}

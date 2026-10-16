@@ -129,6 +129,10 @@ def create_app(config=None):
         return render_template('dashboard.html', jobs=rows[:5], counts=Counter(j['status'] for j in rows),
                                total=len(rows), profile_ready=ready, matches=matches)
 
+    @app.get('/privacy')
+    def public_privacy():
+        return render_template('public_info.html', privacy=True)
+
     @app.get('/favicon.ico')
     def favicon():
         return '', 204

@@ -72,6 +72,12 @@ def init_auth(app):
 
     @app.before_request
     def require_session():
+        if request.endpoint == 'public_privacy':
+            return None
+        if request.endpoint == 'dashboard' and request.method == 'GET' and not authenticated():
+            if session.get('auth_version'):
+                session.clear()
+            return render_template('public_info.html', privacy=False)
         if request.endpoint in PROTOCOL_ENDPOINTS:
             return None  # Each protocol handler verifies its bearer token, signature, or OAuth grant.
         if request.endpoint in ('login', 'static', 'favicon', 'account_register', 'account_signin', 'account_code', 'account_verify', 'account_google', 'account_google_callback'):

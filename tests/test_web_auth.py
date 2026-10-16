@@ -2,6 +2,15 @@ from web_support import WebCase
 
 
 class WebAuthTests(WebCase):
+    def test_public_identity_and_privacy_do_not_expose_workspace(self):
+        for path in ('/', '/privacy'):
+            response = self.client.get(path, base_url='https://localhost')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b'JobPilot', response.data)
+            self.assertNotIn(b'Open job-search assistant', response.data)
+        self.assertIn(b'not affiliated', self.client.get('/').data)
+        self.assertEqual(self.client.get('/profile').status_code, 302)
+
     def test_signed_in_owner_is_not_shown_another_login_form(self):
         self.login()
         for path in ('/login', '/signin'):
@@ -10,7 +19,7 @@ class WebAuthTests(WebCase):
             self.assertEqual(result.headers['Location'], '/')
 
     def test_private_routes_require_login(self):
-        for path in ('/', '/jobs', '/profile', '/sources', '/export', '/jobs/abc/resume'):
+        for path in ('/jobs', '/profile', '/sources', '/export', '/jobs/abc/resume'):
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, 302)
 
@@ -21,7 +30,7 @@ class WebAuthTests(WebCase):
         self.assertIn(b'Your job search', self.login().data)
         self.assertEqual(self.client.post('/logout').status_code, 400)
         self.post('/logout')
-        self.assertEqual(self.client.get('/').status_code, 302)
+        self.assertEqual(self.client.get('/').status_code, 200)
 
     def test_password_rotation_revokes_other_sessions(self):
         other = self.app.test_client()
@@ -33,7 +42,7 @@ class WebAuthTests(WebCase):
             'confirm_password': 'new secure password for jobpilot',
         }, page='/password')
         self.assertIn(b'Password updated', response.data)
-        self.assertEqual(other.get('/').status_code, 302)
+        self.assertEqual(other.get('/').status_code, 200)
 
     def test_login_throttles_repeated_failures(self):
         for _ in range(5):
