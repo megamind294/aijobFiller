@@ -2,6 +2,29 @@ from web_support import WebCase
 
 
 class WorkspacePageTests(WebCase):
+    def test_contact_edit_archive_restore_persists_and_does_not_send(self):
+        from jobpilot.core import read_json
+        self.post('/networking', {'name':'Recruiter Example','company':'Example','email':'recruiter@example.test'}, page='/networking')
+        contact = read_json(self.home / 'networking.json')[0]
+        route = '/networking/' + contact['id'] + '/update'
+        result = self.post(route, {'name':'Updated Recruiter','company':'Example','email':'recruiter@example.test','notes':'Updated notes','draft':'Private draft'}, page='/networking')
+        self.assertIn(b'Updated notes', result.data)
+        self.assertEqual(read_json(self.home / 'networking.json')[0]['draft'], 'Private draft')
+        self.post(route, {'action':'archive'}, page='/networking')
+        self.assertTrue(read_json(self.home / 'networking.json')[0]['archived'])
+        self.post(route, {'action':'restore'}, page='/networking')
+        self.assertFalse(read_json(self.home / 'networking.json')[0]['archived'])
+        self.assertIn(b'No message', result.data)
+
+    def test_contact_update_rejects_invalid_url_without_losing_original(self):
+        from jobpilot.core import read_json
+        self.post('/networking', {'name':'Original'}, page='/networking')
+        contact = read_json(self.home / 'networking.json')[0]
+        result = self.post('/networking/' + contact['id'] + '/update',
+            {'name':'Changed','url':'javascript:alert(1)'}, page='/networking')
+        self.assertIn(b'http', result.data)
+        self.assertEqual(read_json(self.home / 'networking.json')[0]['name'], 'Original')
+
     def setUp(self):
         super().setUp()
         self.login()

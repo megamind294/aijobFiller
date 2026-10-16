@@ -36,6 +36,62 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(first, self.queue.enqueue('app', 'fill'))
         self.assertEqual(len(self.queue.rows()), 1)
 
+    def test_failed_web_reservation_preserves_form_review_for_retry(self):
+        from flask import Flask, g
+        from jobpilot.billing import CreditLedger
+        from jobpilot.web_applications import approve_and_queue
+        from jobpilot.automation import Automation
+        write_json(self.store.home / 'profile.json', PROFILE)
+        key = self.store.add({'url': 'http://127.0.0.1:1', 'title': 'React', 'company': 'Demo', 'description': 'React'})
+        apps = Applications(self.store)
+        run = apps.prepare(key, PROFILE, 'budget-failure')
+        apps.approve_documents(run['id'], run['document_hash'])
+        apps.record_form(run['id'], {'fields': {'Name': 'Demo'}, 'unanswered_required': []})
+        ledger = CreditLedger(self.store.home)
+        limits = Automation(self.store, ledger, 'owner', owner=True)
+        limits.settings(daily_cap=1)
+        ledger.reserve('owner', 'occupied', limits.preview()['day'], 1, owner=True)
+        app = Flask(__name__)
+        app.config['JOBPILOT_HOME'] = str(self.store.home)
+        app.extensions['jobpilot_credit_ledger'] = ledger
+        with app.test_request_context():
+            g.jobpilot_account = {'id': 'owner', 'role': 'owner'}
+            with self.assertRaisesRegex(ValueError, 'cap'):
+                approve_and_queue(run['id'], apps.get(run['id'])['form_hash'], 'form')
+            self.assertEqual(apps.get(run['id'])['state'], 'FORM_REVIEW')
+            self.assertFalse(apps.get(run['id'])['form_approved'])
+            self.assertEqual(self.queue.rows(), [])
+            ledger.settle('owner', 'occupied', False)
+            approve_and_queue(run['id'], apps.get(run['id'])['form_hash'], 'form')
+        self.assertEqual(apps.get(run['id'])['state'], 'APPROVED')
+        self.assertEqual(self.queue.rows()[0]['state'], 'QUEUED')
+
+    def test_changing_automatic_lane_mode_does_not_authorize_old_submission(self):
+        from jobpilot.automation import Automation
+        from jobpilot.billing import CreditLedger
+        from jobpilot.worker import ApplicationWorker
+        write_json(self.store.home / 'profile.json', PROFILE)
+        key = self.store.add({'url': 'http://127.0.0.1:1', 'title': 'React', 'company': 'Demo', 'description': 'React'})
+        ledger = CreditLedger(self.store.home)
+        automation = Automation(self.store, ledger, 'owner', owner=True,
+                                adapters={'http://127.0.0.1:1': {'origin': 'http://127.0.0.1:1'}})
+        lane = automation.save_lane({'name': 'Automatic', 'mode': 'automatic'})
+        automation.activate(lane['id'], True)
+        identifier = automation.run()[0]
+        apps = Applications(self.store)
+        task = self.queue.claim('fixture')
+        apps.record_form(identifier, {'fields': {'Name': 'Demo'}, 'unanswered_required': []})
+        apps.approve_form(identifier, apps.get(identifier)['form_hash'])
+        self.queue.complete(task['id'], 'fixture')
+        self.queue.enqueue(identifier, 'submit')
+        automation.save_lane({'name': 'Review', 'mode': 'review-first'}, lane['id'])
+        worker = ApplicationWorker(self.store, automation.adapters, ledger=ledger, account_id='owner', automation=automation)
+        worker.run_once()
+        self.assertEqual(apps.get(identifier)['state'], 'NEEDS_USER')
+        self.assertIn('authorization was revoked', apps.get(identifier)['error'])
+        self.assertEqual(apps.get(identifier)['receipt'], '{}')
+        self.assertFalse(any(row['attempted'] for row in self.queue.rows()))
+
     def test_worker_entrypoint_defaults_to_one_on_demand_task(self):
         from jobpilot.worker import main
         self.assertEqual(main(['--root', str(self.store.home), '--account', 'owner']), 0)
@@ -75,8 +131,76 @@ class QueueTests(unittest.TestCase):
         run_workspaces(self.store.home)
         self.assertEqual(ledger.history('owner')[0]['state'], 'charged')
 
+    def test_worker_releases_manual_report_reservation_after_route_crash(self):
+        from jobpilot.worker import run_workspaces
+        from jobpilot.billing import CreditLedger
+        write_json(self.store.home / 'profile.json', PROFILE)
+        key = self.store.add({'url': 'https://example.com/job', 'title': 'React', 'company': 'Example', 'description': 'React'})
+        apps = Applications(self.store)
+        run = apps.prepare(key, PROFILE, 'manual-credit-reconcile')
+        ledger = CreditLedger(self.store.home)
+        ledger.reserve('owner', 'application:' + run['id'], '2026-10-16', 10, owner=True)
+        apps.record_manual_submission(run['id'], 'Employer confirmation reference ABC-123', True, run['document_hash'])
+        self.assertEqual(ledger.history('owner')[0]['state'], 'reserved')
+        run_workspaces(self.store.home)
+        self.assertEqual(ledger.history('owner')[0]['state'], 'released')
+        self.assertEqual(apps.get(run['id'])['receipt'], '{}')
+
 
 class BrowserWorkerTests(unittest.TestCase):
+    def test_review_first_lane_explicit_web_approvals_reach_local_receipt(self):
+        from flask import Flask, g
+        from jobpilot.worker import ApplicationWorker, TaskQueue
+        from jobpilot.automation import Automation
+        from jobpilot.billing import CreditLedger
+        from jobpilot.demo import make_server
+        from jobpilot.web_applications import approve_and_queue
+        import copy
+        import json
+        import threading
+        with tempfile.TemporaryDirectory() as directory:
+            server = make_server(0)
+            self.addCleanup(server.server_close)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            self.addCleanup(server.shutdown)
+            url = f'http://127.0.0.1:{server.server_port}'
+            store = Store(directory)
+            profile = copy.deepcopy(PROFILE)
+            profile['answers'] = {'Do you require sponsorship?': 'No'}
+            profile['custom'] = {'consent': True}
+            write_json(Path(directory) / 'profile.json', profile)
+            job_id = store.add({'url': url, 'company': 'Local Demo', 'title': 'React', 'description': 'React'})
+            adapter = {'origin': url, 'submit_selector': 'button[type=submit]', 'success_selector': '#receipt',
+                       'success_text': 'Application received',
+                       'fields': [{'selector': '#consent', 'kind': 'checkbox', 'profile_key': 'custom.consent'}]}
+            ledger = CreditLedger(directory)
+            automation = Automation(store, ledger, 'owner', owner=True, adapters={url: adapter})
+            lane = automation.save_lane({'name': 'Review demo', 'mode': 'review-first'})
+            automation.activate(lane['id'], True)
+            identifier = automation.run()[0]
+            apps, queue = Applications(store), TaskQueue(store)
+            self.assertEqual(apps.get(identifier)['state'], 'DOCUMENT_REVIEW')
+            self.assertEqual(queue.rows(), [])
+            app = Flask(__name__)
+            app.config['JOBPILOT_HOME'] = directory
+            app.extensions['jobpilot_credit_ledger'] = ledger
+            with app.test_request_context():
+                g.jobpilot_account = {'id': 'owner', 'role': 'owner'}
+                approve_and_queue(identifier, apps.get(identifier)['document_hash'], 'documents')
+            worker = ApplicationWorker(store, {url: adapter}, ledger=ledger, account_id='owner', automation=automation)
+            worker.run_once()
+            self.assertEqual(apps.get(identifier)['state'], 'FORM_REVIEW')
+            self.assertEqual(apps.get(identifier)['receipt'], '{}')
+            self.assertFalse(worker.run_once(), 'Review-first must wait for explicit form approval')
+            with app.test_request_context():
+                g.jobpilot_account = {'id': 'owner', 'role': 'owner'}
+                approve_and_queue(identifier, apps.get(identifier)['form_hash'], 'form')
+            worker.run_once()
+            self.assertEqual(apps.get(identifier)['state'], 'SUBMITTED', apps.get(identifier)['error'])
+            self.assertTrue(json.loads(apps.get(identifier)['receipt'])['observed'])
+            self.assertEqual(store.get(job_id)['status'], 'SUBMITTED')
+            self.assertEqual(ledger.history('owner')[0]['state'], 'charged')
+
     def test_missing_required_answers_pause_without_guessing(self):
         from jobpilot.worker import ApplicationWorker, TaskQueue
         from jobpilot.demo import make_server

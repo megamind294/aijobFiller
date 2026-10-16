@@ -1,5 +1,6 @@
 """Authenticated discovery routes using the caller's account-scoped workspace."""
 import re
+import time
 from functools import wraps
 from flask import abort, flash, redirect, render_template, request, url_for
 from .core import read_json, write_json
@@ -8,6 +9,11 @@ from .discovery_catalog import (catalog_rows, explain_match, filter_jobs, ingest
 from .sources import DiscoveryBudget, discover
 from .workspace import current_home, current_store
 from .service import ProcessLock
+
+# Public boards give a new workspace a usable starting point without API keys.
+STARTER_SOURCES = [{'type':'ashby', 'board':board, 'company':company, 'region':'global'}
+                   for board, company in [('ashby','Ashby'), ('supabase','Supabase'),
+                       ('n8n','n8n'), ('replit','Replit'), ('posthog','PostHog'), ('lovable','Lovable')]]
 
 
 def register_discovery(app):
@@ -53,7 +59,40 @@ def register_discovery(app):
             flash(str(exc), 'error')
         facts = profile()
         for job in jobs: job['match'] = explain_match(job, facts)
-        return render_template('browse.html', jobs=jobs, registry=companies, filters=request.args)
+        try:
+            refreshed = read_json(current_home() / 'discovery-refresh.json').get('display_time', '')
+        except (OSError, ValueError, AttributeError):
+            refreshed = ''
+        return render_template('browse.html', jobs=jobs, registry=companies, filters=request.args,
+                               source_count=len(companies or STARTER_SOURCES), refreshed=refreshed)
+
+    @app.post('/browse/search')
+    @guarded
+    def browse_search():
+        from datetime import datetime, timezone
+        query = request.form.get('q', '').strip()[:300]
+        companies = registry() or STARTER_SOURCES
+        try:
+            cache = read_json(current_home() / 'discovery-refresh.json')
+        except (OSError, ValueError):
+            cache = {}
+        if (cache.get('sources') != companies or
+                time.time() - float(cache.get('timestamp', 0)) >= 300):
+            jobs, warnings = discover({'sources':companies, 'title_keywords':[], 'location_keywords':[]},
+                                      budget=DiscoveryBudget(), safe_transport=True)
+            if jobs:
+                keys = ingest_jobs(current_store(), jobs)
+                write_json(current_home() / 'discovery-refresh.json', {
+                    'timestamp':time.time(), 'sources':companies,
+                    'display_time':datetime.now(timezone.utc).strftime('%d %b, %H:%M UTC')})
+                flash(f'Updated {len(keys)} live postings from {len(companies)} company boards.', 'success')
+            elif warnings:
+                flash('Live job sources could not be refreshed. Your saved jobs are still available. Please try again.', 'error')
+            else:
+                flash('These company boards currently have no open postings.', 'info')
+            for warning in warnings[:6]:
+                flash('Source issue: ' + warning, 'error')
+        return redirect(url_for('browse', q=query))
 
     @app.post('/browse/discover')
     @guarded

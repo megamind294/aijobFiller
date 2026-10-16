@@ -121,8 +121,89 @@ def _extract_in_worker(path):
     return payload
 
 
+def structured_section(lines, section):
+    """Parse explicit headings and dates; leave ambiguous identity/order in source text."""
+    bullet = re.compile(r'^\s*[•●▪*\-–]\s+')
+    date = r'(?:(?:[A-Za-z]{3,9}\.?\s+|\d{1,2}[/.-])?(?:19|20)\d{2}(?:[/.-]\d{1,2})?)'
+    dates = re.compile(r'(?<!\w)(' + date + r')\s*[-–—]\s*(' + date + r'|Present|Current|Now|Obecnie)(?!\w)', re.I)
+    identity = re.compile(
+        r'\b(?:developer|engineer|manager|designer|analyst|specialist|consultant|intern|assistant|'
+        r'architect|director|officer|lead|administrator|coordinator|researcher|technician)\b' if section == 'experience'
+        else r'\b(?:b\.?sc|m\.?sc|b\.?tech|m\.?tech|ba|bs|ms|ma|mba|ph\.?d|bachelor|master|doctor|degree|diploma|licencjat|inżynier)\b', re.I)
+
+    def clean(line):
+        return bullet.sub('', line).strip()
+
+    def headers(values):
+        values = [value.strip(' |,;–—-') for value in values if value.strip(' |,;–—-')]
+        # A separator or "at" explicitly relates role/degree to its organization.
+        if len(values) == 1:
+            values = re.split(r'\s*[|]\s*|\s+at\s+|\s+@\s+|\s+[-–—]\s+', values[0], maxsplit=1)
+        if len(values) != 2 or any(len(value) > 300 for value in values):
+            return None
+        matches = [bool(identity.search(value)) for value in values]
+        if matches.count(True) != 1:
+            return None
+        first, second = (values if matches[0] else values[::-1])
+        return {'role': first, 'company': second} if section == 'experience' else {'degree': first, 'institution': second}
+
+    if section == 'projects':
+        entries = []
+        item = None
+        for line in lines:
+            if bullet.match(line):
+                if item:
+                    item['bullets'].append(clean(line))
+            elif re.fullmatch(r'https?://\S+', line):
+                if item and not item['url']:
+                    item['url'] = line
+            else:
+                # Unmarked prose cannot safely distinguish a second title.
+                item = {'name': line, 'url': '', 'bullets': []}
+                entries.append(item)
+        return [item for item in entries if item['bullets'] or item['url']][:50]
+
+    entries = []
+    pending = []
+    item = None
+    for line in lines:
+        match = dates.search(line) if not bullet.match(line) else None
+        if match:
+            inline = (line[:match.start()] + line[match.end():]).strip(' |,;–—-')
+            candidates = pending + ([inline] if inline else [])
+            # Only consume adjacent identity headers, never previous achievements.
+            parsed = headers(candidates[-1:]) or headers(candidates[-2:])
+            if parsed:
+                used = 1 if headers(candidates[-1:]) else 2
+                if item:
+                    item['bullets'].extend(clean(value) for value in candidates[:-used])
+                item = parsed
+                if section == 'experience':
+                    item.update(start=match[1], end=match[2])
+                else:
+                    item['dates'] = match[0]
+                item['bullets'] = []
+                entries.append(item)
+            else:
+                # Stop associating text when a dated record has unknown identity.
+                if item:
+                    item['bullets'].extend(clean(value) for value in pending)
+                item = None
+            pending = []
+        elif bullet.match(line):
+            if item:
+                item['bullets'].extend(clean(value) for value in pending)
+                pending = []
+                item['bullets'].append(clean(line))
+        else:
+            pending.append(line)
+    if item:
+        item['bullets'].extend(clean(value) for value in pending)
+    return entries[:50]
+
+
 def suggested_profile(text):
-    """Only identify explicit contact values and clearly labeled sections."""
+    """Identify explicit contact values and conservative, reviewable section drafts."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     personal = {}
     if lines:
@@ -151,12 +232,14 @@ def suggested_profile(text):
     aliases = {'professional summary': 'summary', 'summary': 'summary', 'about me': 'summary',
                'profile': 'summary', 'podsumowanie': 'summary', 'skills': 'skills',
                'technical skills': 'skills', 'technologies': 'skills', 'umiejętności': 'skills',
-               'experience': 'stop', 'work experience': 'stop', 'employment': 'stop', 'education': 'stop',
-               'employment history': 'stop', 'professional experience': 'stop', 'career history': 'stop',
-               'work history': 'stop', 'academic background': 'stop', 'educational background': 'stop',
-               'doświadczenie zawodowe': 'stop', 'wykształcenie': 'stop',
-               'projects': 'stop', 'languages': 'stop', 'certifications': 'stop', 'references': 'stop'}
-    sections = {'summary': [], 'skills': []}
+               'experience': 'experience', 'work experience': 'experience', 'employment': 'experience', 'education': 'education',
+               'employment history': 'experience', 'professional experience': 'experience', 'career history': 'experience',
+               'work history': 'experience', 'academic background': 'education', 'educational background': 'education',
+               'doświadczenie zawodowe': 'experience', 'wykształcenie': 'education',
+               'projects': 'projects', 'personal projects': 'projects', 'selected projects': 'projects', 'projekty': 'projects',
+               'languages': 'stop', 'certifications': 'stop', 'references': 'stop', 'awards': 'stop',
+               'interests': 'stop', 'volunteering': 'stop', 'publications': 'stop'}
+    sections = {section: [] for section in ('summary', 'skills', 'experience', 'education', 'projects')}
     current = None
     for line in lines:
         heading = line.casefold().strip(' :•-')
@@ -170,6 +253,10 @@ def suggested_profile(text):
     if sections['skills']:
         skills = [part.strip(' •-\t') for part in re.split(r'[,;|\n]', '\n'.join(sections['skills']))]
         draft['skills'] = list(dict.fromkeys(skill for skill in skills if skill and len(skill) <= 100))[:50]
+    for section in ('experience', 'education', 'projects'):
+        entries = structured_section(sections[section], section)
+        if entries:
+            draft[section] = entries
     return draft
 
 
@@ -294,9 +381,12 @@ def register_resume_uploads(app):
                 path = home / 'profile.json'
                 profile = read_json(path) if path.exists() else {'personal': {}, 'skills': [], 'experience': [], 'projects': [], 'education': []}
                 draft = metadata['draft']
-                profile.setdefault('personal', {}).update(draft.get('personal', {}))
-                for field in ('summary', 'skills'):
-                    if draft.get(field):
+                personal = profile.setdefault('personal', {})
+                for field, value in draft.get('personal', {}).items():
+                    if not personal.get(field):
+                        personal[field] = value
+                for field in ('summary', 'skills', 'experience', 'education', 'projects'):
+                    if draft.get(field) and not profile.get(field):
                         profile[field] = draft[field]
                 profile['facts_verified'] = False
                 write_json(path, profile)

@@ -132,7 +132,13 @@ class ApplicationWorker:
             if task['action'] == 'submit' and (run['state'] != 'APPROVED' or not run['form_approved']):
                 raise ValueError('Explicit form approval or activated automatic lane approval is required.')
             with self.store.connect() as db:
-                automatic = db.execute("SELECT 1 FROM sqlite_master WHERE name='automation_applications'").fetchone() and db.execute('SELECT 1 FROM automation_applications WHERE application_id=?', (identifier,)).fetchone()
+                automatic = False
+                if db.execute("SELECT 1 FROM sqlite_master WHERE name='automation_applications'").fetchone():
+                    columns = {row['name'] for row in db.execute('PRAGMA table_info(automation_applications)')}
+                    lane_run = db.execute('SELECT * FROM automation_applications WHERE application_id=?', (identifier,)).fetchone()
+                    # Creation mode is immutable; changing a lane to review-first
+                    # must not bless an old automatically approved submission.
+                    automatic = bool(lane_run and ('submission_mode' not in columns or lane_run['submission_mode'] != 'review-first'))
             if automatic and task['action'] == 'submit' and (not self.automation or not self.automation.authorized_automatic(identifier)):
                 raise ValueError('Automatic lane authorization was revoked. Review this application manually.')
             from playwright.sync_api import sync_playwright
@@ -259,6 +265,8 @@ def run_workspaces(root, *, account_id=None, max_tasks=1, run_lanes=False, confi
                     receipt = json.loads(recorded['receipt'])
                     if receipt.get('observed') is True:
                         ledger.settle(identifier, 'application:' + recorded['id'], True)
+                    elif json.loads(recorded['manual_evidence']).get('verification') == 'user-reported':
+                        ledger.settle(identifier, 'application:' + recorded['id'], False)
                 except (ValueError, TypeError):
                     pass  # Legacy packages can predate credit reservations.
         if not owner and not ledger.has_paid_access(identifier):
@@ -285,7 +293,7 @@ def main(argv=None):
     import argparse
     import os
     from pathlib import Path
-    from .core import read_json
+    from .application_config import load_worker_config
     parser = argparse.ArgumentParser(description='Consume queued applications; no lane activates automatically.')
     parser.add_argument('--root', '--home', dest='root', default=os.environ.get('JOBPILOT_ROOT'), help='Private JobPilot storage root')
     parser.add_argument('--account', help='Optional existing account ID; omit to process existing workspaces')
@@ -298,8 +306,7 @@ def main(argv=None):
     if not args.root or not 1 <= args.max_tasks <= 100:
         parser.error('Supply --home/--root and --max-tasks between 1 and 100')
     root = Path(args.root).resolve()
-    config_path = Path(os.environ.get('JOBPILOT_APPLICATION_ADAPTERS_FILE', str(root / 'application-worker.json')))
-    config = read_json(config_path) if config_path.exists() else {}
+    config = load_worker_config(root)
     try:
         while True:
             run_workspaces(root, account_id=args.account, max_tasks=args.max_tasks, run_lanes=args.run_lanes, config=config)

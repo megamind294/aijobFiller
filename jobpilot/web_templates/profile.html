@@ -1,16 +1,108 @@
-{% extends 'base.html' %}{% block title %}Your profile{% endblock %}{% block content %}
-<div class="page-heading"><div><div class="eyebrow">YOUR EXPERIENCE. YOUR WORDS.</div><h1>Your profile</h1><p class="muted">Save incomplete work as a draft. Verify only facts you have reviewed.</p></div><a class="button" href="/profiles">Manage profiles</a></div>
-{% if profiles %}<nav aria-label="Profiles">{% for item in profiles %}<a class="button" href="/profile?profile_id={{ item.id }}">{{ item.name }}{% if item.is_default %} · Default{% endif %}</a>{% endfor %}</nav>{% endif %}
+{% extends 'base.html' %}
+{% block title %}Your profile{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='profile.css') }}">{% endblock %}
+{% block content %}
+<div class="profile-page">
+<div class="page-heading">
+  <div><div class="eyebrow">YOUR EXPERIENCE. YOUR WORDS.</div><h1>Your profile</h1><p class="muted">Start with your resume, refine your details, then review the facts before verifying.</p></div>
+  <a class="button" href="/profiles">Manage profiles</a>
+</div>
+{% if profiles %}<nav class="profile-switcher" aria-label="Profiles">{% for item in profiles %}<a class="button" href="/profile?profile_id={{ item.id }}" {% if selected and selected.id == item.id %}aria-current="page"{% endif %}>{{ item.name }}{% if item.is_default %} · Default{% endif %}</a>{% endfor %}</nav>{% endif %}
+<ol class="profile-steps" aria-label="Profile setup">
+  <li><a href="#resume-upload"><span>1</span><div><strong>Bring your resume</strong><small>Upload and review suggestions</small></div></a></li>
+  <li><a href="#profile-personal"><span>2</span><div><strong>Make it yours</strong><small>Edit your experience and details</small></div></a></li>
+  <li><a href="#profile-review"><span>3</span><div><strong>Review and save</strong><small>Keep a draft or verify the facts</small></div></a></li>
+</ol>
 {% include 'resume_upload.html' %}
 {% macro error(key) %}{% if errors.get(key) %}<p class="field-error" role="alert">{{ errors[key] }}</p>{% endif %}{% endmacro %}
-<form method="post" class="profile-form" id="profile-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if selected %}<input type="hidden" name="profile_id" value="{{ selected.id }}"><input type="hidden" name="profile_version" value="{{ selected.version }}">{% endif %}
-<section class="panel form-panel"><h2>The essentials</h2><div class="field-grid three">{% for key in personal_fields %}<div><label for="personal_{{ key }}">{{ key|replace('_',' ')|title }}</label><input id="personal_{{ key }}" name="personal_{{ key }}" value="{{ submitted.get('personal_' ~ key, profile.get('personal',{}).get(key,'')) if submitted else profile.get('personal',{}).get(key,'') }}" maxlength="1000" {% if errors.get('personal_' ~ key) %}aria-invalid="true"{% endif %}>{{ error('personal_' ~ key) }}</div>{% endfor %}</div></section>
-<section class="panel form-panel"><h2>Summary and skills</h2>{% for key in ['summary','skills','languages','summary_variants'] %}<label for="{{ key }}">{{ key|replace('_',' ')|title }}{% if key!='summary' %} · one per line{% endif %}</label><textarea id="{{ key }}" name="{{ key }}" rows="4">{{ submitted.get(key, profile.get(key,'') if key=='summary' else profile.get(key,[])|join('\n')) if submitted else (profile.get(key,'') if key=='summary' else profile.get(key,[])|join('\n')) }}</textarea>{{ error(key) }}{% endfor %}</section>
-{% for section, fields in repeat_sections.items() %}<section class="panel form-panel"><h2>{{ section|title }}</h2>{{ error(section) }}<div data-repeat="{{ section }}">{% for item in profile.get(section,[]) or [{}] %}{% set index=loop.index0 %}<fieldset data-entry><legend>{{ section|title }} entry</legend><div class="field-grid">{% for field in fields %}{% set key=section ~ '_' ~ index ~ '_' ~ field %}<div><label for="{{ key }}">{{ field|replace('_',' ')|title }}{% if field=='bullets' %} · one factual statement per line{% endif %}</label>{% if field=='bullets' %}<textarea id="{{ key }}" name="{{ key }}" rows="4">{{ submitted.get(key,item.get(field,[])|join('\n')) if submitted else item.get(field,[])|join('\n') }}</textarea>{% else %}<input id="{{ key }}" name="{{ key }}" value="{{ submitted.get(key,item.get(field,'')) if submitted else item.get(field,'') }}" maxlength="2000">{% endif %}{{ error(key) }}</div>{% endfor %}</div><button type="button" class="button" data-remove>Remove entry</button></fieldset>{% endfor %}</div><button class="button" type="button" data-add="{{ section }}">Add {{ section|title }} entry</button></section>{% endfor %}
-<section class="panel form-panel"><h2>Saved application answers</h2><p class="muted">Leave unknown eligibility answers blank. These are your words, never inferred.</p><div data-repeat="answers">{% for question,answer in answer_rows %}<fieldset data-entry><legend>Saved answer</legend><label for="answers_{{ loop.index0 }}_question">Question label</label><input name="answers_{{ loop.index0 }}_question" id="answers_{{ loop.index0 }}_question" value="{{ question }}"><label for="answers_{{ loop.index0 }}_answer">Your answer</label><textarea name="answers_{{ loop.index0 }}_answer" id="answers_{{ loop.index0 }}_answer">{{ answer }}</textarea><button class="button" type="button" data-remove>Remove answer</button></fieldset>{% endfor %}</div><button class="button" type="button" data-add="answers">Add answer</button></section>
-<section class="panel form-panel"><h2>Application preferences</h2><div class="field-grid">{% for key in custom_fields %}<div><label for="custom_{{ key }}">{{ key|replace('_',' ')|title }}</label><input id="custom_{{ key }}" name="custom_{{ key }}" value="{{ profile.get('custom',{}).get(key,'') }}"></div>{% endfor %}</div></section>
-<section class="panel form-panel"><h2>Baseline document style</h2><p class="muted">These settings apply to new baseline versions. Previously saved documents keep their original settings.</p><div class="field-grid">{% for key,choices in [('template',['classic','minimal']),('font',['Vera','Helvetica','Times-Roman','Courier']),('size',['9','10','11','12']),('spacing',['compact','normal','relaxed'])] %}<div><label for="preference_{{ key }}">{{ key|title }}</label><select name="preference_{{ key }}" id="preference_{{ key }}">{% for choice in choices %}<option value="{{ choice }}" {% if preferences[key]==choice %}selected{% endif %}>{{ choice }}</option>{% endfor %}</select></div>{% endfor %}</div><label for="preference_sections">Visible sections, in order</label><input name="preference_sections" id="preference_sections" value="{{ preferences.sections|join(',') }}"><p class="field-hint">Comma-separated: summary, skills, experience, projects, education, languages. Omit a section to hide it.</p></section>
-{% if submitted %}{% for key,value in submitted.items() %}{% if key.endswith('_json') %}<details open><summary>Previous structured submission · {{ key }}</summary><textarea name="{{ key }}">{{ value }}</textarea></details>{% endif %}{% endfor %}{% endif %}
-<section class="panel form-panel save-panel"><label class="checkbox"><input type="checkbox" name="facts_verified" value="yes" {% if profile.get('facts_verified') %}checked{% endif %}><span>I reviewed all facts, dates, achievements and eligibility answers.</span></label><button type="submit" name="save_action" value="draft" class="button">Save draft</button><button type="submit" name="save_action" value="save" class="button primary">Save profile</button>{% if selected %}<a class="button" href="/profiles/{{ selected.id }}/versions">Version history and preview</a>{% endif %}</section></form>
+<div class="profile-editor-layout">
+<aside class="profile-section-menu">
+  <div class="profile-menu-heading">IN THIS PROFILE</div>
+  <nav aria-label="Profile sections">
+    <a href="#profile-personal">Personal details</a>
+    <a href="#profile-summary">Summary and skills</a>
+    {% for section in repeat_sections %}<a href="#profile-{{ section }}">{{ 'Work experience' if section == 'experience' else section|title }}</a>{% endfor %}
+    <a href="#profile-answers">Saved answers</a>
+    <a href="#profile-preferences">Application preferences</a>
+    <a href="#profile-style">Document style</a>
+    <a href="#profile-review" class="profile-review-link">Review and save ↓</a>
+  </nav>
+  <p class="profile-menu-hint">Save a draft at any point. Only verify details you have checked.</p>
+</aside>
+<form method="post" class="profile-form" id="profile-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if selected %}<input type="hidden" name="profile_id" value="{{ selected.id }}"><input type="hidden" name="profile_version" value="{{ selected.version }}">{% endif %}
+  <section class="panel form-panel profile-section" id="profile-personal">
+    <div class="profile-section-heading"><div><h2>Personal details</h2><p class="muted">Your contact details and the links employers can use to reach you.</p></div><span class="profile-status {{ 'verified' if profile.get('facts_verified') and not errors else 'draft' }}">{{ 'Review required' if errors else ('Verified profile' if profile.get('facts_verified') else 'Unverified draft') }}</span></div>
+    <div class="field-grid three">
+    {% for key in personal_fields %}<div>
+      <label for="personal_{{ key }}">{{ key|replace('_',' ')|title }}</label>
+      <input id="personal_{{ key }}" name="personal_{{ key }}" value="{{ submitted.get('personal_' ~ key, profile.get('personal',{}).get(key,'')) if submitted else profile.get('personal',{}).get(key,'') }}" maxlength="1000" {% if errors.get('personal_' ~ key) %}aria-invalid="true"{% endif %}>
+      {{ error('personal_' ~ key) }}
+    </div>{% endfor %}
+    </div>
+  </section>
+  <section class="panel form-panel profile-section" id="profile-summary">
+    <div class="profile-section-heading"><div><h2>Summary and skills</h2><p class="muted">Describe what you do and list the skills and languages you actually use.</p></div></div>
+    <div class="field-grid profile-summary-grid">
+    {% for key in ['summary','skills','languages','summary_variants'] %}<div class="profile-field {% if key in ['summary','summary_variants'] %}profile-field-wide{% endif %}">
+      <label for="{{ key }}">{{ key|replace('_',' ')|title }}{% if key!='summary' %} · one per line{% endif %}</label>
+      <textarea id="{{ key }}" name="{{ key }}" rows="4">{{ submitted.get(key, profile.get(key,'') if key=='summary' else profile.get(key,[])|join('\n')) if submitted else (profile.get(key,'') if key=='summary' else profile.get(key,[])|join('\n')) }}</textarea>{{ error(key) }}
+    </div>{% endfor %}
+    </div>
+  </section>
+  {% for section, fields in repeat_sections.items() %}
+  <section class="panel form-panel profile-section profile-repeat-section" id="profile-{{ section }}">
+    <div class="profile-section-heading"><div><h2>{{ 'Work experience' if section == 'experience' else section|title }}</h2><p class="muted">{{ {'experience':'Add roles with the original employers, dates, and achievements.', 'education':'Add your qualifications, institutions, and the dates shown in your records.', 'projects':'Show what you built, your contribution, and a link when available.'}.get(section, 'Add and review your entries below.') }}</p></div></div>
+    {{ error(section) }}
+    <div data-repeat="{{ section }}">
+    {% for item in profile.get(section,[]) or [{}] %}{% set index=loop.index0 %}
+      <fieldset data-entry class="profile-entry"><legend>{{ 'Work experience' if section == 'experience' else section|title }} entry</legend>
+        <div class="field-grid">
+        {% for field in fields %}{% set key=section ~ '_' ~ index ~ '_' ~ field %}<div class="profile-field {% if field=='bullets' %}profile-field-wide{% endif %}">
+          <label for="{{ key }}">{{ field|replace('_',' ')|title }}{% if field=='bullets' %} · one factual statement per line{% endif %}</label>
+          {% if field=='bullets' %}<textarea id="{{ key }}" name="{{ key }}" rows="4">{{ submitted.get(key,item.get(field,[])|join('\n')) if submitted else item.get(field,[])|join('\n') }}</textarea>
+          {% else %}<input id="{{ key }}" name="{{ key }}" value="{{ submitted.get(key,item.get(field,'')) if submitted else item.get(field,'') }}" maxlength="2000">{% endif %}
+          {{ error(key) }}
+        </div>{% endfor %}
+        </div>
+        <div class="profile-entry-actions"><button type="button" class="button" data-remove>Remove entry</button></div>
+      </fieldset>
+    {% endfor %}
+    </div>
+    <button class="button profile-add-button" type="button" data-add="{{ section }}">Add {{ section|title }} entry</button>
+  </section>
+  {% endfor %}
+  <section class="panel form-panel profile-section" id="profile-answers">
+    <div class="profile-section-heading"><div><h2>Saved application answers</h2><p class="muted">Leave unknown eligibility answers blank. These are your words, never inferred.</p></div></div>
+    <div data-repeat="answers">
+    {% for question,answer in answer_rows %}<fieldset data-entry class="profile-entry"><legend>Saved answer</legend>
+      <label for="answers_{{ loop.index0 }}_question">Question label</label><input name="answers_{{ loop.index0 }}_question" id="answers_{{ loop.index0 }}_question" value="{{ question }}">
+      <label for="answers_{{ loop.index0 }}_answer">Your answer</label><textarea name="answers_{{ loop.index0 }}_answer" id="answers_{{ loop.index0 }}_answer" rows="3">{{ answer }}</textarea>
+      <div class="profile-entry-actions"><button class="button" type="button" data-remove>Remove answer</button></div>
+    </fieldset>{% endfor %}
+    </div>
+    <button class="button profile-add-button" type="button" data-add="answers">Add answer</button>
+  </section>
+  <section class="panel form-panel profile-section" id="profile-preferences">
+    <div class="profile-section-heading"><div><h2>Application preferences</h2><p class="muted">Keep practical details ready for application forms. Leave anything undecided blank.</p></div></div>
+    <div class="field-grid">{% for key in custom_fields %}<div><label for="custom_{{ key }}">{{ key|replace('_',' ')|title }}</label><input id="custom_{{ key }}" name="custom_{{ key }}" value="{{ profile.get('custom',{}).get(key,'') }}"></div>{% endfor %}</div>
+  </section>
+  <section class="panel form-panel profile-section" id="profile-style">
+    <div class="profile-section-heading"><div><h2>Baseline document style</h2><p class="muted">These settings apply to new baseline versions. Previously saved documents keep their original settings.</p></div></div>
+    <div class="field-grid">{% for key,choices in [('template',['classic','minimal']),('font',['Vera','Helvetica','Times-Roman','Courier']),('size',['9','10','11','12']),('spacing',['compact','normal','relaxed'])] %}<div><label for="preference_{{ key }}">{{ key|title }}</label><select name="preference_{{ key }}" id="preference_{{ key }}">{% for choice in choices %}<option value="{{ choice }}" {% if preferences[key]==choice %}selected{% endif %}>{{ choice }}</option>{% endfor %}</select></div>{% endfor %}</div>
+    <label for="preference_sections">Visible sections, in order</label><input name="preference_sections" id="preference_sections" value="{{ preferences.sections|join(',') }}"><p class="field-hint">Comma-separated: summary, skills, experience, projects, education, languages. Omit a section to hide it.</p>
+  </section>
+  {% if submitted %}{% for key,value in submitted.items() %}{% if key.endswith('_json') %}<details open><summary>Previous structured submission · {{ key }}</summary><textarea name="{{ key }}">{{ value }}</textarea></details>{% endif %}{% endfor %}{% endif %}
+  <section class="panel form-panel save-panel profile-section" id="profile-review">
+    <div class="profile-section-heading"><div><h2>Review and save</h2><p class="muted">Save unfinished work as a draft. To verify, review every fact and check the confirmation below before saving your profile.</p></div></div>
+    <label class="checkbox"><input type="checkbox" name="facts_verified" value="yes" {% if profile.get('facts_verified') %}checked{% endif %}><span>I reviewed all facts, dates, achievements and eligibility answers.</span></label>
+    <div class="profile-save-actions"><button type="submit" name="save_action" value="draft" class="button">Save draft</button><button type="submit" name="save_action" value="save" class="button primary">Save profile</button></div>
+    <p class="field-hint">Save draft keeps this profile unverified, even when the confirmation is checked. Save profile verifies it only when the confirmation is checked and required details are complete.</p>
+    {% if selected %}<a class="profile-history-link" href="/profiles/{{ selected.id }}/versions">Version history and preview →</a>{% endif %}
+  </section>
+</form>
+</div>
+</div>
 <script src="{{ url_for('static',filename='profile_forms.js') }}" defer></script>
 {% endblock %}

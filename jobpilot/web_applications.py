@@ -11,7 +11,8 @@ from flask import abort, current_app, flash, g, redirect, render_template, reque
 
 from .applications import Applications
 from .billing import CreditLedger
-from .core import read_json
+from .core import origin, read_json
+from .application_config import load_worker_config
 from .worker import TaskQueue
 from .workspace import current_home, current_store
 
@@ -38,10 +39,10 @@ def approve_and_queue(identifier, approval_hash, action):
     """The single request-scoped approval, budget and queue path for web/API/MCP."""
     service = Applications(current_store())
     if action == 'documents':
-        service.approve_documents(identifier, approval_hash)
+        service.validate_document_approval(identifier, approval_hash)
         worker_action = 'fill'
     elif action == 'form':
-        service.approve_form(identifier, approval_hash)
+        service.validate_form_approval(identifier, approval_hash)
         worker_action = 'submit'
     else:
         raise ValueError('Unknown application approval.')
@@ -50,6 +51,10 @@ def approve_and_queue(identifier, approval_hash, action):
     limits = Automation(current_store(), ledger, account_id, owner=owner).settings()
     day = datetime.now(timezone.utc).astimezone(ZoneInfo(limits['timezone'])).date().isoformat()
     ledger.reserve(account_id, 'application:' + identifier, day, limits['daily_cap'], owner=owner)
+    if action == 'documents':
+        service.approve_documents(identifier, approval_hash)
+    else:
+        service.approve_form(identifier, approval_hash)
     TaskQueue(current_store()).enqueue(identifier, worker_action)
     return service.get(identifier)
 
@@ -74,7 +79,13 @@ def register_applications(app):
     @app.get('/dashboard/applications')
     def applications_index():
         service = Applications(current_store())
-        rows = service.rows()
+        jobs = {job['id']: job for job in current_store().rows()}
+        rows = [{**run, 'job': jobs.get(run['job_id'], {}),
+                 'title': jobs.get(run['job_id'], {}).get('title', 'Archived posting'),
+                 'company': jobs.get(run['job_id'], {}).get('company', ''),
+                 'location': jobs.get(run['job_id'], {}).get('location', ''),
+                 'user_reported': json.loads(run['manual_evidence']).get('verification') == 'user-reported'}
+                for run in service.rows()]
         return render_template('applications.html', applications=rows)
 
     @app.post('/applications/prepare/<job_id>')
@@ -82,7 +93,8 @@ def register_applications(app):
     def application_prepare(job_id):
         service = Applications(current_store())
         run = service.prepare(job_id, read_json(current_home() / 'profile.json'), request.form.get('request_key', secrets.token_hex(16)),
-                              request.form.get('cover_letter', 'yes') == 'yes', request.form.get('optimization', 'honest'))
+                              request.form.get('cover_letter', 'yes') == 'yes', request.form.get('optimization', 'honest'),
+                              ai_consent=request.form.get('ai_consent') == 'yes')
         return redirect(url_for('application_review', identifier=run['id']))
 
     @app.get('/applications/<identifier>')
@@ -94,8 +106,15 @@ def register_applications(app):
             service.assert_current(run)
         except (ValueError, FileNotFoundError) as exc:
             stale = str(exc)
+        config_error = ''
+        try:
+            adapters = load_worker_config(current_app.config['JOBPILOT_HOME'], current_app.config)['adapters']
+        except ValueError as exc:
+            adapters, config_error = {}, str(exc)
         return render_template('application_review.html', run=run, source=service.snapshot(identifier),
                                diff=service.diff(identifier), form=json.loads(run['form']), receipt=json.loads(run['receipt']),
+                               manual_evidence=json.loads(run['manual_evidence']), can_report_manual=service.manual_report_available(identifier),
+                               adapter_supported=origin(service.snapshot(identifier)['job']['url']) in adapters, adapter_error=config_error,
                                stale=stale, request_key=secrets.token_hex(16), job=current_store().get(run['job_id']),
                                can_restart=can_restart(service, run))
 
@@ -108,7 +127,8 @@ def register_applications(app):
         source = service.snapshot(identifier)
         fresh = service.prepare(run['job_id'], read_json(current_home() / 'profile.json'),
                                 request.form.get('request_key', ''), bool(run['letter_path']),
-                                source['optimization'], parent_id=identifier)
+                                source['optimization'], parent_id=identifier,
+                                letter_text_override=source['cover_letter'] if run['letter_path'] else None)
         return redirect(url_for('application_review', identifier=fresh['id']))
 
     @app.get('/applications/<identifier>/artifacts/<kind>')
@@ -146,4 +166,18 @@ def register_applications(app):
         service, run = package(identifier)
         approve_and_queue(identifier, request.form.get('form_hash', ''), 'form')
         flash('Submission approved for this exact form and document version. Success requires an employer receipt.', 'success')
+        return redirect(url_for('application_review', identifier=identifier))
+
+    @app.post('/applications/<identifier>/manual-report')
+    @application_action
+    def application_manual_report(identifier):
+        service, run = package(identifier)
+        service.record_manual_submission(identifier, request.form.get('evidence_note', ''),
+                                         request.form.get('attested') == 'yes', request.form.get('document_hash', ''))
+        ledger, account_id, owner = billing_context()
+        try:
+            ledger.settle(account_id, 'application:' + identifier, False)
+        except ValueError:
+            pass  # Direct manual handoffs may have no credit reservation.
+        flash('Your submission report was saved. Employer confirmation has not been independently verified.', 'success')
         return redirect(url_for('application_review', identifier=identifier))

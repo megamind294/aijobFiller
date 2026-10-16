@@ -65,10 +65,10 @@ def greenhouse(board):
 def ashby(board):
     data = fetch_json('https://api.ashbyhq.com/posting-api/job-board/' + quote(board, safe=''))
     return [{'url':j.get('jobUrl') or j['applyUrl'], 'title':j['title'], 'company':board,
-             'location':j.get('location',''), 'description':j.get('descriptionPlain') or plain(j.get('descriptionHtml','')),
+             'location':j.get('location') or '', 'description':j.get('descriptionPlain') or plain(j.get('descriptionHtml','')),
              'source':'ashby', 'published_at':j.get('publishedAt'),
-             'workplace':j.get('workplaceType','remote' if j.get('isRemote') else '').lower(),
-             'employment_type':j.get('employmentType','').lower()}
+             'workplace':(j.get('workplaceType') or ('remote' if j.get('isRemote') else '')).lower(),
+             'employment_type':(j.get('employmentType') or '').lower()}
             for j in data['jobs'] if j.get('isListed', True)]
 
 def lever(board,region='global'):

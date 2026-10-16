@@ -5,6 +5,22 @@ from unittest.mock import patch
 from jobpilot.core import Store
 
 class DiscoveryCatalogTests(unittest.TestCase):
+    def test_ashby_accepts_null_optional_fields_from_real_feed(self):
+        from jobpilot import sources
+        with patch('jobpilot.sources.fetch_json', return_value={'jobs':[
+            {'title':'Engineer','jobUrl':'https://jobs.ashbyhq.com/demo/one',
+             'workplaceType':None,'employmentType':None,'location':None,'isRemote':True}]}):
+            job = sources.ashby('demo')[0]
+        self.assertEqual(job['workplace'], 'remote')
+        self.assertEqual(job['employment_type'], '')
+        self.assertEqual(job['location'], '')
+
+    def test_frontend_developer_query_matches_engineer_wording_but_not_backend(self):
+        from jobpilot.discovery_catalog import filter_jobs
+        rows = [{'title':'Senior Front-End Engineer','description':'React interfaces','company':'Example','location':'Remote','status':'DISCOVERED'},
+                {'title':'Backend Engineer','description':'Build databases in Go','company':'Example','location':'Remote','status':'DISCOVERED'}]
+        self.assertEqual(filter_jobs(rows, {'q':'frontend developer'}), rows[:1])
+
     def test_ashby_normalizes_only_listed_jobs_and_supported_metadata(self):
         from jobpilot import sources
         self.assertTrue(hasattr(sources, 'ashby'), 'Ashby public feed is missing')

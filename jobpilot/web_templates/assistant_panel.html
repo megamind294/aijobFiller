@@ -1,0 +1,10 @@
+<dialog id="assistant-dialog" class="assistant-dialog" aria-labelledby="assistant-title">
+  <div class="section-heading"><div><span class="eyebrow">JOBPILOT ASSISTANT</span><h2 id="assistant-title">Let's work on your next step.</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="Close assistant">×</button></div>
+  <p class="muted assistant-privacy">Your question, profile summary and recent job records are sent to Google Gemini to answer. The assistant cannot submit applications, send email or change your data.</p>
+  {% if assistant_available %}
+  <div id="assistant-messages" class="assistant-messages" role="log" aria-live="polite" aria-label="Conversation"><p class="muted">Ask about your profile, shortlist or next steps.</p></div>
+  <p id="assistant-error" class="field-error" role="alert" hidden></p>
+  <form id="assistant-form" method="post" action="/assistant/message"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="assistant-question">Your question</label><textarea id="assistant-question" name="message" rows="3" maxlength="2000" required placeholder="What should I improve in my profile?"></textarea><button class="button primary" type="submit">Ask assistant ↗</button><span id="assistant-pending" class="muted" role="status"></span></form>
+  {% else %}<div class="notice">The AI assistant is not connected yet. The operator must configure the server's Gemini API access.</div>{% endif %}
+  <div class="assistant-prompts"><a class="button" href="/profile">My profile</a><a class="button" href="/browse">Find jobs</a><a class="button" href="/applications">Applications</a></div>
+</dialog>

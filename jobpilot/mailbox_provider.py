@@ -8,7 +8,7 @@ import time
 from email.utils import parseaddr
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlsplit, quote
+from urllib.parse import urlencode, urlsplit, quote, parse_qs
 from urllib.request import Request, urlopen
 
 SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
@@ -16,6 +16,14 @@ QUERY = 'newer_than:30d -in:sent -in:trash -in:spam -category:promotions {interv
 
 
 class MailboxUnavailable(ValueError):
+    pass
+
+
+class MailboxCursorExpired(MailboxUnavailable):
+    pass
+
+
+class MailboxMessageGone(MailboxUnavailable):
     pass
 
 
@@ -28,6 +36,7 @@ class GmailMailbox:
         self.home = Path(home) / 'mailbox'
         self.config = config
         self.path = self.home / 'tokens.enc'
+        self._pending_page_id = None
 
     def configured(self):
         uri = setting(self.config, 'GOOGLE_GMAIL_REDIRECT_URI')
@@ -100,7 +109,15 @@ class GmailMailbox:
             if not isinstance(result, dict):
                 raise ValueError('Invalid response')
             return result
-        except (HTTPError, URLError, TimeoutError, ValueError):
+        except HTTPError as error:
+            # Gmail may invalidate a continuation token as the mailbox changes.
+            # A failure fetching a message must not discard a valid list cursor.
+            if error.code == 400 and 'pageToken' in parse_qs(urlsplit(url).query):
+                raise MailboxCursorExpired('Gmail pagination expired; retry sync to start a fresh scan') from None
+            if error.code == 404 and '/messages/' in urlsplit(url).path:
+                raise MailboxMessageGone('This Gmail message is no longer available') from None
+            raise MailboxUnavailable('Gmail could not complete this request; reconnect or retry') from None
+        except (URLError, TimeoutError, ValueError):
             raise MailboxUnavailable('Gmail could not complete this request; reconnect or retry') from None
 
     def exchange(self, code, verifier):
@@ -137,18 +154,104 @@ class GmailMailbox:
         return tokens
 
     def candidates(self, limit=50):
+        """Read one bounded page per user sync, continuing across provider instances.
+
+        Store a pending continuation alongside encrypted account tokens. The caller
+        must acknowledge successful ingestion before the committed cursor moves.
+        Failed source reads or ingestion retry the same bounded page.
+        """
         if not self.configured():
             raise MailboxUnavailable('Gmail is not configured')
         limit = min(50, max(1, int(limit)))
+        self._pending_page_id = None
         tokens = self._access()
         prefix = hashlib.sha256(tokens['mailbox'].encode()).hexdigest()[:16] + ':'
         base = 'https://gmail.googleapis.com/gmail/v1/users/me/messages'
-        listing = self._http(base + '?' + urlencode({'q': QUERY, 'maxResults': limit}), token=tokens['access_token'])
+        fields = {'q': QUERY, 'maxResults': limit}
+        page_token = self._cursor_page(tokens)
+        if page_token:
+            fields['pageToken'] = page_token
+        pending = tokens.get('sync_pending', {})
+        if (isinstance(pending, dict) and pending.get('mailbox') == tokens['mailbox']
+                and pending.get('query') == QUERY and pending.get('page_token') == page_token
+                and isinstance(pending.get('message_ids'), list)):
+            ids = pending['message_ids']
+            next_page = pending.get('next_page')
+        else:
+            try:
+                listing = self._http(base + '?' + urlencode(fields), token=tokens['access_token'])
+            except MailboxCursorExpired:
+                latest = self._current_connection(tokens)
+                if self._cursor_page(latest) == page_token:
+                    latest.pop('sync_cursor', None)
+                    latest.pop('sync_pending', None)
+                    self.save_tokens(latest)
+                raise
+            ids = [item['id'] for item in listing.get('messages', [])[:limit]]
+            next_page = listing.get('nextPageToken')
+        if next_page:
+            if not isinstance(next_page, str):
+                raise MailboxUnavailable('Invalid Gmail pagination response; retry sync')
+        latest = self._current_connection(tokens)
+        if self._cursor_page(latest) != page_token:
+            raise MailboxUnavailable('Mailbox sync progressed in another request; retry sync')
+        pending_id = secrets.token_hex(16)
+        latest['sync_pending'] = {'mailbox': tokens['mailbox'], 'query': QUERY,
+                                  'page_token': page_token, 'next_page': next_page, 'attempt': pending_id,
+                                  'message_ids': ids, 'fetched_count': min(limit, len(ids))}
+        self.save_tokens(latest)
         messages = []
-        for item in listing.get('messages', [])[:limit]:
-            raw = self._http(base + '/' + quote(item['id'], safe='') + '?format=full', token=tokens['access_token'])
+        for message_id in ids[:limit]:
+            try:
+                raw = self._http(base + '/' + quote(message_id, safe='') + '?format=full', token=tokens['access_token'])
+            except MailboxMessageGone:
+                continue
             messages.append(normalize_message(raw, prefix))
+        self._pending_page_id = pending_id
         return messages
+
+    @staticmethod
+    def _cursor_page(tokens):
+        cursor = tokens.get('sync_cursor', {})
+        if (isinstance(cursor, dict) and cursor.get('mailbox') == tokens.get('mailbox')
+                and cursor.get('query') == QUERY):
+            return cursor.get('page_token') or None
+        return None
+
+    def _current_connection(self, original):
+        # Re-read before updating metadata so a concurrent refresh is preserved,
+        # and a disconnect/reconnect cannot be overwritten by an older scan.
+        tokens = self.load_tokens()
+        if (tokens.get('mailbox') != original['mailbox']
+                or tokens.get('refresh_token') != original.get('refresh_token')):
+            raise MailboxUnavailable('Mailbox connection changed; retry sync')
+        return tokens
+
+    def acknowledge_candidates(self):
+        """Commit the pending page only after the caller has ingested its messages."""
+        tokens = self.load_tokens()
+        pending = tokens.get('sync_pending', {})
+        if (not isinstance(pending, dict) or pending.get('mailbox') != tokens.get('mailbox')
+                or pending.get('query') != QUERY
+                or not self._pending_page_id or pending.get('attempt') != self._pending_page_id
+                or pending.get('page_token') != self._cursor_page(tokens)):
+            raise MailboxUnavailable('Mailbox sync changed; retry sync before acknowledging')
+        next_page = pending.get('next_page')
+        remaining = pending.get('message_ids', [])[pending.get('fetched_count', 0):]
+        if remaining:
+            pending['message_ids'] = remaining
+            pending['fetched_count'] = 0
+            pending.pop('attempt', None)
+            self.save_tokens(tokens)
+            self._pending_page_id = None
+            return
+        if next_page:
+            tokens['sync_cursor'] = {'mailbox': tokens['mailbox'], 'query': QUERY, 'page_token': next_page}
+        else:
+            tokens.pop('sync_cursor', None)
+        tokens.pop('sync_pending', None)
+        self.save_tokens(tokens)
+        self._pending_page_id = None
 
 
 def body_text(part, depth=0):

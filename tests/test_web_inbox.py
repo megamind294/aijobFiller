@@ -101,6 +101,116 @@ class WebInboxCase(WebCase):
         self.assertNotIn('Owner private message', page)
 
 
+    def draft_fixture(self):
+        from jobpilot.inbox import Inbox
+        from jobpilot.core import Store
+        box = Inbox(Store(self.home))
+        box.ingest([dict(id='selected', subject='Selected message', text='a' * 13000, timestamp=1),
+                    dict(id='other', text='other-message-private', timestamp=2)])
+        box.save_draft('selected', 'Prior saved draft')
+        (self.home / 'profile.json').write_text(json.dumps({'personal': {'first_name': 'Ada',
+            'email': 'private@example.test', 'phone': 'private-phone'}, 'summary': 'Confirmed summary',
+            'experience': [{'secret': 'private-experience'}]}), encoding='utf-8')
+        self.login()
+        return box
+
+    def test_gemini_draft_is_explicit_minimal_local_and_escaped(self):
+        box = self.draft_fixture()
+        self.app.config['GEMINI_API_KEY'] = 'mock-configured'
+        page = self.client.get('/inbox?message=selected', base_url='https://localhost').get_data(as_text=True)
+        self.assertIn('By choosing Draft with Gemini', page)
+        self.assertIn('Google Gemini', page)
+        with patch('jobpilot.web_inbox.provider_reply', return_value='<script>draft()</script>') as provider, \
+             patch('jobpilot.web_inbox.claim_ai_request') as budget:
+            response = self.post('/inbox/selected/draft', {'action': 'gemini'}, page='/inbox?message=selected')
+        self.assertEqual(provider.call_count, 1)
+        budget.assert_called_once_with()
+        args, kwargs = provider.call_args
+        self.assertEqual(args[0], [{'role': 'user', 'content': 'a' * 12000}])
+        self.assertEqual(args[1], {'candidate': {'first_name': 'Ada', 'summary': 'Confirmed summary'}})
+        self.assertEqual(kwargs['max_output_tokens'], 700)
+        self.assertIn('untrusted data', kwargs['instructions'])
+        self.assertEqual(box.get('selected')['draft'], '<script>draft()</script>')
+        self.assertEqual(box.get('other')['draft'], '')
+        self.assertNotIn('<script>draft()', response.get_data(as_text=True))
+        self.assertIn('&lt;script&gt;draft()', response.get_data(as_text=True))
+        self.assertIn('Local draft saved. Nothing was sent', response.get_data(as_text=True))
+
+    def test_manual_and_acknowledgement_drafts_never_call_gemini(self):
+        box = self.draft_fixture()
+        self.app.config['GEMINI_API_KEY'] = 'mock-configured'
+        with patch('jobpilot.web_inbox.provider_reply') as provider:
+            self.post('/inbox/selected/draft', {'draft': 'Manual reply'}, page='/inbox')
+            self.assertEqual(box.get('selected')['draft'], 'Manual reply')
+            self.post('/inbox/selected/draft', {'action': 'suggest'}, page='/inbox')
+        provider.assert_not_called()
+        self.assertIn('Thank you', box.get('selected')['draft'])
+
+    def test_unconfigured_gemini_preserves_draft_and_does_not_claim_success(self):
+        box = self.draft_fixture()
+        self.app.config['GEMINI_API_KEY'] = ''
+        with patch('jobpilot.web_inbox.provider_reply') as provider, \
+             patch('jobpilot.web_inbox.claim_ai_request') as budget:
+            response = self.post('/inbox/selected/draft', {'action': 'gemini'}, page='/inbox')
+        provider.assert_not_called()
+        budget.assert_not_called()
+        self.assertEqual(box.get('selected')['draft'], 'Prior saved draft')
+        self.assertIn('not configured', response.get_data(as_text=True))
+        self.assertNotIn('Local draft saved', response.get_data(as_text=True))
+
+    def test_gemini_failure_and_shared_rate_limit_preserve_saved_draft(self):
+        from jobpilot.assistant import AssistantUnavailable, AILimitReached
+        box = self.draft_fixture()
+        self.app.config['GEMINI_API_KEY'] = 'mock-configured'
+        with patch('jobpilot.web_inbox.provider_reply', side_effect=AssistantUnavailable('Try again later.')), \
+             patch('jobpilot.web_inbox.claim_ai_request'):
+            response = self.post('/inbox/selected/draft', {'action': 'gemini'}, page='/inbox')
+        self.assertIn('saved draft is unchanged', response.get_data(as_text=True))
+        self.assertEqual(box.get('selected')['draft'], 'Prior saved draft')
+        with patch('jobpilot.web_inbox.claim_ai_request', side_effect=AILimitReached('Hourly AI limit reached.')), \
+             patch('jobpilot.web_inbox.provider_reply') as provider:
+            response = self.post('/inbox/selected/draft', {'action': 'gemini'}, page='/inbox')
+        provider.assert_not_called()
+        self.assertIn('Hourly AI limit reached', response.get_data(as_text=True))
+        self.assertEqual(box.get('selected')['draft'], 'Prior saved draft')
+
+    def test_ingestion_failure_does_not_advance_page_cursor(self):
+        import sqlite3
+        from urllib.parse import parse_qs, urlsplit
+        from jobpilot.mailbox_provider import GmailMailbox
+        from jobpilot.inbox import Inbox
+        from jobpilot.core import Store
+        self.configure()
+        provider = GmailMailbox(self.home, self.app.config)
+        provider.save_tokens(dict(access_token='mock-access', refresh_token='mock-refresh',
+                                  expires_at=9999999999, mailbox='candidate@example.test'))
+        self.login()
+        def source(url, data=None, token=None):
+            query = parse_qs(urlsplit(url).query)
+            if 'q' in query:
+                offset = int(query.get('pageToken', ['0'])[0])
+                result = {'messages': [{'id': str(i)} for i in range(offset, min(offset+50, 60))]}
+                if offset == 0:
+                    result['nextPageToken'] = '50'
+                return result
+            return {'id': urlsplit(url).path.rsplit('/', 1)[-1], 'payload': {}}
+        with patch('jobpilot.mailbox_provider.GmailMailbox._http', side_effect=source) as http:
+            with patch('jobpilot.inbox.Inbox.ingest', side_effect=sqlite3.OperationalError('busy')):
+                response = self.post('/inbox/sync', page='/inbox')
+            self.assertIn('Could not sync Gmail', response.get_data(as_text=True))
+            self.assertNotIn('sync_cursor', provider.load_tokens())
+            self.assertEqual(provider.load_tokens()['sync_pending']['next_page'], '50')
+            self.assertEqual(http.call_count, 51)
+            http.reset_mock()
+            self.post('/inbox/sync', page='/inbox')
+            self.assertEqual(provider.load_tokens()['sync_cursor']['page_token'], '50')
+            self.assertNotIn('sync_pending', provider.load_tokens())
+            self.assertEqual(http.call_count, 50)
+            self.post('/inbox/sync', page='/inbox')
+        self.assertEqual(len(Inbox(Store(self.home)).rows()), 60)
+        self.assertNotIn('sync_cursor', provider.load_tokens())
+
+
 class ProviderCase(unittest.TestCase):
     def test_read_only_oauth_scope_exact_redirect_and_pkce(self):
         from jobpilot.mailbox_provider import GmailMailbox

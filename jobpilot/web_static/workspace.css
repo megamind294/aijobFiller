@@ -1,0 +1,23 @@
+/* Shared product surface. Component styles load after these defaults. */
+:root{font-family:"Segoe UI",Arial,sans-serif;--ink:#20392b;--muted:#63746a;--teal:#173d31;--teal-dark:#102d23;--line:#e1e8e2}
+.main,.sidebar,.mobile-dock{font-family:"Segoe UI",Arial,sans-serif;font-size:14px}
+.main .page-content{padding:32px;max-width:1520px;margin:0 auto}
+.main .page-heading{margin-bottom:28px;gap:20px;align-items:center}
+.main h1{font-size:32px;font-weight:650;letter-spacing:-1px;line-height:1.2}
+.main h2{font-size:20px;font-weight:650;line-height:1.35}
+.main h3{font-size:18px;font-weight:650;line-height:1.4}
+.main .eyebrow{font-size:10px;letter-spacing:1.6px}.main p{line-height:1.65}
+.main .panel{border-radius:16px;box-shadow:none;border-color:var(--line)}
+.main button:not(.text-button):not(.icon-button):not(.password-toggle){border:1px solid #d5dfd7;border-radius:9px;padding:10px 16px;min-height:40px;background:#fff;color:#173d31;font-size:13px;font-weight:600;line-height:1.35}
+.main button.primary,.main .button.primary{background:#173d31!important;color:#fff!important;border-color:#173d31!important}
+.main button:disabled,.main .button:disabled{cursor:not-allowed;opacity:.5}
+.main .button{font-size:13px;line-height:1.35;border-radius:9px;font-weight:600;min-height:40px;padding:10px 16px}
+.main input:not([type=checkbox]):not([type=radio]):not([type=hidden]),.main select,.main textarea{font-size:14px;border-radius:9px;border-color:#d6dfd8;background:#fff;min-height:43px}
+.main label{font-size:13px;font-weight:600;line-height:1.5}.main input[type=file]{padding:10px}
+.main fieldset{border:1px solid #e1e8e2;border-radius:12px;padding:20px;margin:18px 0;background:#fbfcfa}.main legend{padding:0 8px;font-weight:600;font-size:12px;color:#63746a}
+.main .form-panel>h2{margin-bottom:20px}.main .field-grid{gap:18px}.main .field-hint{font-size:12px;line-height:1.6}.main .badge{font-size:11px;line-height:1.4}
+.main .notice{font-size:14px;line-height:1.6;border-radius:12px;margin-bottom:20px;padding:16px 20px}
+.main .table-wrap{overflow:auto}.main table th{font-size:11px;letter-spacing:.5px;color:#65756a;text-transform:uppercase}.main table td{font-size:13px;line-height:1.55}.main table td small{font-size:12px;margin-top:5px}
+.sidebar nav a{font-size:13px;padding:11px}.sidebar nav a .nav-icon{width:19px;height:19px;flex-shrink:0}.sidebar .brand{font-size:25px;font-weight:750}.sidebar .nav-label{font-size:9px}.topbar{padding-left:32px;padding-right:32px}.global-search input{font-size:13px}.main .empty-state{padding:40px 24px}.main .empty-state p{max-width:520px;margin-left:auto;margin-right:auto}
+.profile-form .save-panel{position:sticky;bottom:12px;z-index:5;box-shadow:0 4px 30px #173d3115;background:#fff}.profile-form .save-panel .checkbox{width:100%;margin:0 0 14px;display:flex;align-items:flex-start;gap:10px}.profile-form .save-panel .checkbox input{width:16px;height:16px;flex:0 0 16px;margin-top:3px}
+@media(max-width:800px){.main .page-content{padding:22px 18px 90px}.main h1{font-size:27px}.main .page-heading{align-items:flex-start;gap:14px}.topbar{padding-left:18px;padding-right:18px}.profile-form .save-panel{bottom:70px;padding:16px}.main fieldset{padding:15px}.main .field-grid{gap:12px}.main .page-heading>.button{font-size:12px}}

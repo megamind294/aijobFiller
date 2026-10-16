@@ -6,6 +6,7 @@ document.querySelectorAll('[data-add]').forEach(button => button.addEventListene
   const index = Math.max(-1, ...indices) + 1;
   entry.querySelectorAll('input,textarea').forEach(input => {
     input.name = input.name.replace(/_\d+_/, `_${index}_`); input.id = input.name; input.value = '';
+    input.removeAttribute('aria-invalid');
   });
   entry.querySelectorAll('label').forEach(label => label.htmlFor = label.htmlFor.replace(/_\d+_/, `_${index}_`));
   entry.querySelectorAll('[role="alert"]').forEach(x => x.remove());
@@ -15,6 +16,7 @@ document.addEventListener('click', event => {
   if (!event.target.matches('[data-remove]')) return;
   const entry = event.target.closest('[data-entry]');
   if (entry.parentElement.querySelectorAll('[data-entry]').length === 1) {
-    entry.querySelectorAll('input,textarea').forEach(x => x.value = '');
+    entry.querySelectorAll('input,textarea').forEach(x => { x.value = ''; x.removeAttribute('aria-invalid'); });
+    entry.querySelectorAll('[role="alert"]').forEach(x => x.remove());
   } else entry.remove();
 });

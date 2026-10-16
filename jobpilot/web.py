@@ -156,6 +156,8 @@ def create_app(config=None):
     register_automation(app)
     from .workspace_pages import register_workspace_pages
     register_workspace_pages(app)
+    from .assistant import register_assistant
+    register_assistant(app)
     from .web_auth import PROTOCOL_ENDPOINTS
     for endpoint in PROTOCOL_ENDPOINTS:
         view = app.view_functions.get(endpoint)

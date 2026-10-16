@@ -3,6 +3,26 @@ from unittest.mock import patch
 from tests.web_support import WebCase
 
 class BrowseTests(WebCase):
+    def test_search_fetches_real_sources_for_new_workspace_and_caches_refresh(self):
+        self.login()
+        posting = {'title':'Senior Front-End Engineer','company':'Example',
+                   'url':'https://jobs.ashbyhq.com/example/one','source':'ashby',
+                   'description':'Build React interfaces','location':'Remote'}
+        with patch('jobpilot.web_discovery.discover', return_value=([posting], [])) as fetch:
+            result = self.post('/browse/search', {'q':'frontend developer'}, page='/browse')
+            self.assertEqual(result.status_code, 200)
+            self.assertIn('Senior Front-End Engineer', result.get_data(as_text=True))
+            self.assertTrue(fetch.call_args.args[0]['sources'])
+            self.assertTrue(fetch.call_args.kwargs['safe_transport'])
+            self.post('/browse/search', {'q':'React'}, page='/browse')
+            self.assertEqual(fetch.call_count, 1)
+
+    def test_search_reports_provider_failure_instead_of_silent_empty_results(self):
+        self.login()
+        with patch('jobpilot.web_discovery.discover', return_value=([], ['example: TimeoutError'])):
+            result = self.post('/browse/search', {'q':'frontend developer'}, page='/browse')
+        self.assertIn('could not be refreshed', result.get_data(as_text=True))
+
     def setUp(self):
         super().setUp()
         if 'browse' not in self.app.view_functions:

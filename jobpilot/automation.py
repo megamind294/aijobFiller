@@ -20,7 +20,14 @@ class Automation:
                 CREATE TABLE IF NOT EXISTS automation_settings (id INTEGER PRIMARY KEY CHECK(id=1),daily_cap INTEGER,timezone TEXT);
                 INSERT OR IGNORE INTO automation_settings VALUES(1,10,'UTC');
                 CREATE TABLE IF NOT EXISTS automation_history (id INTEGER PRIMARY KEY,created TEXT,lane_id TEXT,job_id TEXT,outcome TEXT,detail TEXT);
-                CREATE TABLE IF NOT EXISTS automation_applications (application_id TEXT PRIMARY KEY,lane_id TEXT,config_hash TEXT);''')
+                CREATE TABLE IF NOT EXISTS automation_applications (application_id TEXT PRIMARY KEY,lane_id TEXT,config_hash TEXT,
+                    submission_mode TEXT NOT NULL DEFAULT 'automatic');''')
+            db.execute('BEGIN IMMEDIATE')
+            columns = {row['name'] for row in db.execute('PRAGMA table_info(automation_applications)')}
+            if 'submission_mode' not in columns:
+                # Older packages have no reliable manual/automatic provenance. Keep
+                # their existing standing-authorization checks rather than bypassing them.
+                db.execute("ALTER TABLE automation_applications ADD COLUMN submission_mode TEXT NOT NULL DEFAULT 'automatic'")
 
     def settings(self, daily_cap=None, timezone_name=None):
         with self.store.connect() as db:
@@ -110,14 +117,37 @@ class Automation:
                 elif lane['mode'] == 'automatic' and origin(job['url']) not in self.adapters:
                     reason = 'Automatic submission requires a supported adapter'
                 with self.store.connect() as db:
-                    existing = db.execute("SELECT 1 FROM application_runs WHERE job_id=? AND state NOT IN ('SUPERSEDED')", (job['id'],)).fetchone() if db.execute("SELECT 1 FROM sqlite_master WHERE name='application_runs'").fetchone() else None
-                if existing and not reason:
+                    existing = db.execute("SELECT * FROM application_runs WHERE job_id=? AND state NOT IN ('SUPERSEDED')", (job['id'],)).fetchall() if db.execute("SELECT 1 FROM sqlite_master WHERE name='application_runs'").fetchone() else []
+                retry = len(existing) == 1 and self._budget_retry(existing[0], lane, profile)
+                if existing and not retry and not reason:
                     reason = 'Existing application package; review its history'
                 candidates.append({'lane_id': lane['id'], 'lane_name': lane['name'], 'job_id': job['id'], 'title': job['title'],
                                    'company': job['company'], 'score': score, 'reason': reason, 'eligible': not bool(reason), 'active': lane['active']})
         day = instant.astimezone(ZoneInfo(settings['timezone'])).date().isoformat()
         return {**settings, 'day': day, 'candidates': candidates, 'entitled': self.owner or self.entitled,
                 'next_run': None, 'schedule': 'On demand; external scheduler must invoke the account worker explicitly.'}
+
+    def _budget_retry(self, run, lane, profile):
+        """Only untouched, current packages without any credit reservation can retry."""
+        if run['state'] != 'DOCUMENT_REVIEW' or run['document_approved'] or run['form_approved']:
+            return False
+        source = json.loads(run['snapshot'])
+        if (not run['request_key'].startswith('auto:') or source['profile'] != profile or
+                source.get('profile_id', 'default') != lane['resume_profile'] or
+                source['optimization'] != lane['optimization'] or bool(run['letter_path']) != lane['cover_letter']):
+            return False
+        with self.store.connect() as db:
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='application_tasks'").fetchone() and db.execute(
+                    'SELECT 1 FROM application_tasks WHERE application_id=?', (run['id'],)).fetchone():
+                return False
+        with self.ledger.connect() as db:
+            if db.execute('SELECT 1 FROM credit_reservations WHERE reference=?', ('application:' + run['id'],)).fetchone():
+                return False
+        try:
+            Applications(self.store).assert_current(dict(run))
+        except (ValueError, FileNotFoundError):
+            return False
+        return True
 
     def run(self):
         if not (self.owner or self.entitled):
@@ -139,7 +169,8 @@ class Automation:
                 run = apps.prepare(job_id, profile, request_key, lane['cover_letter'], lane['optimization'], profile_id=lane['resume_profile'])
                 self.ledger.reserve(self.account_id, 'application:' + run['id'], preview['day'], preview['daily_cap'], owner=self.owner)
                 with self.store.connect() as db:
-                    db.execute('INSERT OR IGNORE INTO automation_applications VALUES(?,?,?)', (run['id'], lane['id'], fingerprint(lane)))
+                    db.execute('INSERT OR IGNORE INTO automation_applications(application_id,lane_id,config_hash,submission_mode) VALUES(?,?,?,?)',
+                               (run['id'], lane['id'], fingerprint(lane), lane['mode']))
                 if lane['mode'] == 'automatic':
                     apps.approve_documents(run['id'], run['document_hash'])
                     queue.enqueue(run['id'], 'fill')

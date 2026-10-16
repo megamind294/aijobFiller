@@ -2,6 +2,7 @@
 from flask import current_app, redirect, render_template, request, url_for
 
 from .automation import Automation
+from .application_config import load_worker_config
 from .web_applications import application_action, billing_context
 from .workspace import current_store
 
@@ -11,12 +12,13 @@ def current_automation():
     subscription = ledger.subscription(account_id)
     entitled = subscription.get('tier') == 'power' and subscription.get('status') in ('active', 'trialing')
     return Automation(current_store(), ledger, account_id, owner=owner, entitled=entitled,
-                      adapters=current_app.config.get('JOBPILOT_APPLICATION_ADAPTERS', {}))
+                      adapters=load_worker_config(current_app.config['JOBPILOT_HOME'], current_app.config)['adapters'])
 
 
 def register_automation(app):
     @app.get('/auto-apply')
     @app.get('/dashboard/auto-apply')
+    @application_action
     def automation_index():
         service = current_automation()
         from .profile_vault import ProfileVault

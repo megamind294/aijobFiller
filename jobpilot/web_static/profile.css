@@ -1,0 +1,50 @@
+/* Profile editor only: keep source facts and all validation visible. */
+.profile-page{max-width:1200px;margin:0 auto}
+.profile-page .profile-switcher{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
+.profile-switcher a[aria-current=page]{background:#edf4ee;border-color:#9bb6a5}
+.profile-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;list-style:none;padding:0;margin:0 0 26px}
+.profile-steps li{min-width:0}
+.profile-steps a{display:flex;align-items:center;gap:12px;padding:16px;border:1px solid var(--line);border-radius:12px;color:var(--ink);height:100%;background:#f8faf7}
+.profile-steps a:hover{background:#edf4ee;text-decoration:none;border-color:#9bb6a5}
+.profile-steps a>span{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;border-radius:50%;background:#e5eee5;color:#234d37;font-weight:700;font-size:13px}
+.profile-steps strong{display:block;font-size:13px;line-height:1.5}
+.profile-steps small{display:block;color:var(--muted);font-size:11px;line-height:1.5;margin-top:2px}
+.profile-page .resume-panel{background:linear-gradient(120deg,#f7faf5,#fff 65%);border-color:#cbdccc}
+.profile-page .resume-panel>.section-heading .eyebrow{margin-bottom:8px}
+.profile-page .resume-panel .resume-upload-form{align-items:end}
+.profile-page .resume-panel .resume-upload-form>.button{margin:0 0 26px;white-space:nowrap}
+.profile-editor-layout{display:grid;grid-template-columns:178px minmax(0,1fr);gap:26px;align-items:start}
+.profile-section-menu{position:sticky;top:22px;padding-top:8px}
+.profile-menu-heading{font-size:10px;font-weight:700;letter-spacing:1.3px;color:var(--muted);margin-bottom:14px;padding-left:10px}
+.profile-section-menu nav{display:grid;gap:3px}
+.profile-section-menu nav a{padding:10px;border-radius:8px;font-size:12px;line-height:1.45;color:#526958}
+.profile-section-menu nav a:hover{background:#edf4ee;color:var(--ink);text-decoration:none}
+.profile-section-menu nav .profile-review-link{margin-top:9px;border-top:1px solid var(--line);border-radius:0;padding-top:17px;color:var(--teal);font-weight:650}
+.profile-menu-hint{font-size:11px;color:var(--muted);line-height:1.7;margin:18px 10px 0}
+.profile-page .profile-form{min-width:0}
+.profile-page .profile-section{scroll-margin-top:22px;overflow:visible}
+.profile-page .profile-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:22px}
+.profile-page .profile-section-heading h2{margin:0 0 7px;font-size:19px}
+.profile-page .profile-section-heading p{font-size:12px;line-height:1.7;margin:0;max-width:600px}
+.profile-status{display:inline-flex;align-items:center;white-space:nowrap;font-size:10px;font-weight:650;border-radius:6px;padding:6px 9px;line-height:1.5;background:#f6f0de;color:#715d26;border:1px solid #e9dfc0}
+.profile-status.verified{background:#eaf4ec;color:#356348;border-color:#cce0d1}
+.profile-page .profile-form .field-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.profile-page .profile-form .field-grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}
+.profile-page .profile-form .field-grid label{margin-top:0}
+.profile-page .profile-form .profile-field-wide{grid-column:1/-1}
+.profile-page .profile-form textarea{min-height:118px}
+.profile-page .profile-form fieldset.profile-entry{background:#fafcf9;padding:20px;margin:0 0 18px;border:1px solid #dfe7dc;border-radius:12px}
+.profile-page .profile-form fieldset.profile-entry legend{font-size:11px;color:#59705e;background:white;padding:3px 8px;border:1px solid #e1e8de;border-radius:5px}
+.profile-page .profile-entry-actions{display:flex;justify-content:flex-end;margin-top:16px;padding-top:14px;border-top:1px solid #e5ebe1}
+.profile-page .profile-entry-actions .button{font-size:12px;min-height:36px;padding:8px 12px;color:#805b50;background:transparent;border-color:#dfd6d0}
+.profile-page .profile-form .profile-add-button{margin-top:0;border-style:dashed;background:#f7faf5;min-height:42px}
+.profile-page .profile-form .field-error{font-size:12px;line-height:1.6;margin:6px 0 0;color:#9d362d}
+.profile-page .profile-form .save-panel{display:block;position:static;padding:26px;box-shadow:none;background:#f4f8f1;border-color:#cdddc5}
+.profile-page .profile-form .save-panel .checkbox{margin:0 0 20px;line-height:1.7;font-size:13px}
+.profile-save-actions{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.profile-save-actions .button{min-width:130px}
+.profile-page .profile-history-link{display:inline-block;margin-top:20px;font-size:12px;font-weight:600}
+@media(min-width:1400px){.profile-page .profile-form .field-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1050px){.profile-editor-layout{grid-template-columns:1fr;gap:18px}.profile-section-menu{position:static;padding:0}.profile-menu-heading{padding:0;margin-bottom:10px}.profile-section-menu nav{display:flex;flex-wrap:wrap;gap:7px}.profile-section-menu nav a{border:1px solid var(--line);padding:8px 11px;background:#fff;font-size:11px}.profile-section-menu nav .profile-review-link{margin:0;border:1px solid #cbdccc;border-radius:8px;padding:8px 11px;background:#f3f8ef}.profile-menu-hint{display:none}.profile-steps{gap:10px}.profile-steps a{padding:13px;gap:9px}.profile-steps small{font-size:10px}.profile-status{white-space:normal}}
+@media(max-width:650px){.profile-steps{grid-template-columns:1fr;gap:8px;margin-bottom:20px}.profile-steps a{padding:12px 14px}.profile-steps strong{font-size:12px}.profile-steps small{font-size:11px}.profile-page .profile-section-heading{display:block;margin-bottom:19px}.profile-status{margin-top:12px}.profile-page .profile-form .field-grid,.profile-page .profile-form .field-grid.three{grid-template-columns:1fr;gap:16px}.profile-page .profile-form .form-panel{padding:20px 16px}.profile-page .profile-form fieldset.profile-entry{padding:16px 12px}.profile-page .resume-panel .resume-upload-form>.button{margin:14px 0 0;width:100%}.profile-page .resume-panel .resume-upload-form{display:block}.profile-save-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.profile-save-actions .button{min-width:0;padding:10px}.profile-page .profile-form .save-panel{padding:22px 18px}.profile-page .profile-section{scroll-margin-top:16px}.profile-page .profile-section-menu nav a{font-size:11px}.profile-page .resume-suggestions>div{grid-template-columns:76px minmax(0,1fr)}}
+@media(prefers-reduced-motion:no-preference){.profile-steps a,.profile-section-menu a{transition:background-color .15s,border-color .15s}}

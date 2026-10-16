@@ -93,3 +93,76 @@ class ApplicationTests(unittest.TestCase):
         run = self.apps.rows()[0]
         self.apps.fail(run['id'], 'late housekeeping failure')
         self.assertEqual(self.apps.get(run['id'])['state'], 'SUBMITTED')
+
+    def test_manual_handoff_records_user_evidence_without_employer_receipt(self):
+        run = self.apps.prepare(self.key, PROFILE, 'manual-handoff')
+        report = self.apps.record_manual_submission(run['id'], 'Portal confirmation reference ABC-123', True, run['document_hash'])
+        self.assertEqual(report['state'], 'SUBMITTED')
+        self.assertEqual(report['receipt'], '{}')
+        evidence = json.loads(report['manual_evidence'])
+        self.assertEqual(evidence['verification'], 'user-reported')
+        self.assertEqual(evidence['document_hash'], run['document_hash'])
+        self.assertEqual(evidence['note'], 'Portal confirmation reference ABC-123')
+        self.assertEqual(self.store.get(self.key)['status'], 'SUBMITTED')
+        again = self.apps.record_manual_submission(run['id'], evidence['note'], True, run['document_hash'])
+        self.assertEqual(again['manual_evidence'], report['manual_evidence'])
+        with self.assertRaises(ValueError):
+            self.apps.record_manual_submission(run['id'], 'Different report cannot overwrite', True, run['document_hash'])
+        with self.assertRaises(ValueError):
+            self.apps.prepare(self.key, PROFILE, 'duplicate-after-manual')
+
+    def test_manual_reporting_requires_attestation_evidence_and_exact_version(self):
+        run = self.apps.prepare(self.key, PROFILE, 'manual-validation')
+        for note, attested, document_hash in [('Portal ABC-123', False, run['document_hash']),
+                                              ('', True, run['document_hash']),
+                                              ('Portal ABC-123', True, 'wrong-version')]:
+            with self.subTest(note=note, attested=attested, document_hash=document_hash):
+                with self.assertRaises(ValueError):
+                    self.apps.record_manual_submission(run['id'], note, attested, document_hash)
+        self.assertEqual(self.apps.get(run['id'])['state'], 'DOCUMENT_REVIEW')
+
+    def test_manual_reconciliation_preserves_historical_snapshot_after_source_edit(self):
+        run = self.apps.prepare(self.key, PROFILE, 'uncertain-manual')
+        changed = json.loads(json.dumps(PROFILE))
+        changed['summary'] = 'Corrected after the earlier application.'
+        write_json(self.home / 'profile.json', changed)
+        with self.assertRaises(ValueError):
+            self.apps.record_manual_submission(run['id'], 'Confirmed in portal ABC-123', True, run['document_hash'])
+        self.apps.fail(run['id'], 'Employer receipt not observed', uncertain=True)
+        report = self.apps.record_manual_submission(run['id'], 'Confirmed in portal ABC-123', True, run['document_hash'])
+        self.assertEqual(report['state'], 'SUBMITTED')
+        self.assertEqual(json.loads(report['manual_evidence'])['profile_hash'], run['profile_hash'])
+        self.assertEqual(self.apps.snapshot(run['id'])['profile'], PROFILE)
+
+    def test_manual_reporting_cannot_race_queued_worker_or_accept_tampered_artifacts(self):
+        from jobpilot.worker import TaskQueue
+        run = self.apps.prepare(self.key, PROFILE, 'queued-manual')
+        queue = TaskQueue(self.store)
+        queue.enqueue(run['id'], 'fill')
+        with self.assertRaises(ValueError):
+            self.apps.record_manual_submission(run['id'], 'Confirmed in portal ABC-123', True, run['document_hash'])
+        task = queue.claim('worker')
+        with self.assertRaises(ValueError):
+            self.apps.record_manual_submission(run['id'], 'Confirmed in portal ABC-123', True, run['document_hash'])
+        queue.complete(task['id'], 'worker', 'PAUSED')
+        self.apps.fail(run['id'], 'Unconfirmed', uncertain=True)
+        Path(run['resume_path']).write_bytes(b'%PDF tampered')
+        with self.assertRaises(ValueError):
+            self.apps.record_manual_submission(run['id'], 'Confirmed in portal ABC-123', True, run['document_hash'])
+
+    def test_manual_reporting_cannot_overwrite_observed_employer_receipt(self):
+        self.test_only_observed_receipt_can_mark_submitted()
+        run = self.apps.rows()[0]
+        with self.assertRaises(ValueError):
+            self.apps.record_manual_submission(run['id'], 'Other reported evidence', True, run['document_hash'])
+        self.assertTrue(json.loads(self.apps.get(run['id'])['receipt'])['observed'])
+
+    def test_historical_manual_reconciliation_keeps_later_tracker_outcome(self):
+        run = self.apps.prepare(self.key, PROFILE, 'historical-outcome')
+        self.apps.fail(run['id'], 'Receipt was not observed', uncertain=True)
+        self.store.update(self.key, 'INTERVIEW', note='Interview invitation checked', evidence='Interview reference INT-123')
+        self.apps.record_manual_submission(run['id'], 'Earlier application confirmed APP-123', True, run['document_hash'])
+        job = self.store.get(self.key)
+        self.assertEqual(job['status'], 'INTERVIEW')
+        self.assertEqual(job['evidence'], 'Interview reference INT-123')
+        self.assertEqual(self.apps.get(run['id'])['state'], 'SUBMITTED')

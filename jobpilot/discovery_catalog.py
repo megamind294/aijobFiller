@@ -103,6 +103,13 @@ def terms(value):
     return [part.strip().casefold() for part in str(value or '').split(',') if part.strip()][:30]
 
 
+def search_groups(value):
+    text = re.sub(r'front[\s-]+end', 'frontend', str(value or '').casefold())
+    aliases = {'frontend':('frontend','front-end','front end','react','ui engineer'),
+               'developer':('developer','engineer'), 'engineer':('engineer','developer')}
+    return [aliases.get(word, (word,)) for word in re.findall(r'[\w+#.]+', text)[:30]]
+
+
 def filter_jobs(rows, filters):
     selected = []
     scope = filters.get('scope', 'title')
@@ -113,7 +120,8 @@ def filter_jobs(rows, filters):
         text = description if scope == 'description' else title + ' ' + description if scope == 'all' else title
         if terms(filters.get('include')) and not any(term in text for term in terms(filters.get('include'))): continue
         if any(term in text for term in terms(filters.get('exclude'))): continue
-        if terms(filters.get('q')) and not all(term in ' '.join(str(row.get(k) or '') for k in ('title','description','company','location')).casefold() for term in terms(filters.get('q'))): continue
+        searchable = ' '.join(str(row.get(k) or '') for k in ('title','description','company','location')).casefold()
+        if not all(any(term in searchable for term in group) for group in search_groups(filters.get('q'))): continue
         if terms(filters.get('location')) and not any(term in row.get('location','').casefold() for term in terms(filters.get('location'))): continue
         if terms(filters.get('company')) and not any(term in row.get('company','').casefold() for term in terms(filters.get('company'))): continue
         if any(term in row.get('company','').casefold() for term in terms(filters.get('exclude_company'))): continue
@@ -129,6 +137,16 @@ def filter_jobs(rows, filters):
             current = datetime.now(timezone.utc)
             if not current - timedelta(hours=int(age)) <= published <= current: continue
         selected.append(row)
+    groups = search_groups(filters.get('q'))
+    if groups:
+        def relevance(row):
+            title = str(row.get('title') or '').casefold()
+            score = sum(10 for group in groups if any(term in title for term in group))
+            if any(word in title for word in ('manager', 'director', 'head of')) and not any(
+                    word in str(filters.get('q', '')).casefold() for word in ('manager', 'director', 'head')):
+                score -= 20
+            return score
+        selected.sort(key=relevance, reverse=True)
     return selected
 
 

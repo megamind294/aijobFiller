@@ -1,6 +1,7 @@
 """Authenticated job workflows backed by the existing Store."""
 import re
 import tempfile
+import secrets
 from functools import wraps
 from pathlib import Path
 
@@ -103,7 +104,16 @@ def register_jobs(app):
         with store.connect() as db:
             events = [dict(row) for row in db.execute(
                 'SELECT created,status,note FROM events WHERE job_id=? ORDER BY rowid DESC', (key,))]
-        return render_template('job.html', job=job, events=events, statuses=sorted(STATUSES))
+        profile_ready = False
+        try:
+            validate_profile(read_json(home / 'profile.json'))
+            profile_ready = True
+        except (OSError, ValueError, TypeError):
+            pass
+        from .applications import Applications
+        packages = [run for run in Applications(store).rows() if run['job_id'] == key]
+        return render_template('job.html', job=job, events=events, statuses=sorted(STATUSES),
+                               profile_ready=profile_ready, packages=packages, request_key=secrets.token_hex(16))
 
     @app.post('/jobs/<key>/prepare')
     @action_guard

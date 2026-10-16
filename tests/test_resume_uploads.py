@@ -7,6 +7,35 @@ from reportlab.pdfgen import canvas
 from web_support import WebCase
 from jobpilot.core import read_json, write_json
 from test_workflow import PROFILE
+from jobpilot.resume_uploads import suggested_profile
+
+
+CONVENTIONAL_RESUME = '''Jane Example
+jane@example.com
+Professional Summary
+Frontend developer building accessible interfaces.
+Skills
+React, TypeScript, CSS
+Work Experience
+Frontend Developer | Example Studio
+Jan 2022 – Present
+• Built accessible customer forms.
+• Reduced page load time.
+Software Engineer
+Earlier Company
+2019 - 2021
+- Shipped a billing dashboard.
+Education
+BSc Computer Science | Example University
+2015 - 2019
+• Graduated with honours.
+Projects
+Accessible UI Kit
+https://example.com/ui
+• Published reusable components.
+Languages
+English
+'''
 
 
 def sample_pdf():
@@ -84,10 +113,56 @@ class ResumeUploadTests(WebCase):
         self.assertIn(b'Unverified profile draft', response.data)
         profile = read_json(self.home / 'profile.json')
         self.assertFalse(profile['facts_verified'])
-        self.assertEqual(profile['personal']['email'], 'jane@example.com')
-        self.assertEqual(profile['personal']['first_name'], 'Jane')
-        self.assertEqual(profile['skills'], ['React', 'TypeScript', 'CSS'])
+        for field, value in PROFILE['personal'].items():
+            self.assertEqual(profile['personal'][field], value)
+        self.assertEqual(profile['personal']['linkedin'], 'https://linkedin.com/in/jane-example')
+        self.assertEqual(profile['skills'], PROFILE['skills'])
         self.assertEqual(profile['experience'], PROFILE['experience'])
+
+    def test_conventional_sections_prefill_empty_profile_with_source_retained(self):
+        response = self.upload(sample_docx(CONVENTIONAL_RESUME), 'resume.docx')
+        metadata = read_json(self.home / 'current-resume.json')
+        draft = metadata['draft']
+        self.assertEqual(draft['experience'], [
+            {'role': 'Frontend Developer', 'company': 'Example Studio', 'start': 'Jan 2022',
+             'end': 'Present', 'bullets': ['Built accessible customer forms.', 'Reduced page load time.']},
+            {'role': 'Software Engineer', 'company': 'Earlier Company', 'start': '2019',
+             'end': '2021', 'bullets': ['Shipped a billing dashboard.']}])
+        self.assertEqual(draft['education'], [{'degree': 'BSc Computer Science', 'institution': 'Example University',
+                                              'dates': '2015 - 2019', 'bullets': ['Graduated with honours.']}])
+        self.assertEqual(draft['projects'], [{'name': 'Accessible UI Kit', 'url': 'https://example.com/ui',
+                                             'bullets': ['Published reusable components.']}])
+        self.assertIn(b'Example Studio', response.data)
+        self.post('/profile/resume/import', {'resume_id': metadata['id'], 'confirmed': 'yes'}, page='/profile')
+        profile = read_json(self.home / 'profile.json')
+        for field in ('experience', 'education', 'projects'):
+            self.assertEqual(profile[field], draft[field])
+        self.assertFalse(profile['facts_verified'])
+        self.assertEqual((self.home / 'uploaded-resumes' / metadata['id'] / 'text.txt').read_text(encoding='utf-8'),
+                         CONVENTIONAL_RESUME.strip())
+
+    def test_import_preserves_saved_sections_and_is_idempotent(self):
+        profile = {**PROFILE, 'education': [{'degree': 'Saved degree', 'institution': 'Saved college', 'dates': '2000'}],
+                   'projects': [{'name': 'Saved project', 'bullets': ['Saved achievement.']}]}
+        write_json(self.home / 'profile.json', profile)
+        self.upload(sample_docx(CONVENTIONAL_RESUME), 'resume.docx')
+        metadata = read_json(self.home / 'current-resume.json')
+        for _ in range(2):
+            self.post('/profile/resume/import', {'resume_id': metadata['id'], 'confirmed': 'yes'}, page='/profile')
+        self.assertEqual(read_json(self.home / 'profile.json'), {**profile, 'facts_verified': False})
+
+    def test_ambiguous_history_is_left_for_manual_review(self):
+        draft = suggested_profile('Experience\nExample Studio\n2020 - 2022\nEducation\nExample University\n2015 - 2019\nProjects\nFirst title\nSecond title')
+        self.assertNotIn('experience', draft)
+        self.assertNotIn('education', draft)
+        self.assertNotIn('projects', draft)
+
+    def test_inline_dates_and_reverse_stacked_headers(self):
+        draft = suggested_profile('Work Experience\nExample Studio\nFrontend Developer | Jan 2022 - Present\n'
+                                  '• Built forms.\nEducation\nExample University\nBSc Computer Science | 2015 - 2019')
+        self.assertEqual(draft['experience'][0]['company'], 'Example Studio')
+        self.assertEqual(draft['experience'][0]['start'], 'Jan 2022')
+        self.assertEqual(draft['education'][0]['institution'], 'Example University')
 
     def test_resume_routes_require_login_and_csrf(self):
         self.assertEqual(self.client.post('/profile/resume', data={}).status_code, 400)
