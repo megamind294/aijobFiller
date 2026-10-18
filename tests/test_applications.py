@@ -166,3 +166,23 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(job['status'], 'INTERVIEW')
         self.assertEqual(job['evidence'], 'Interview reference INT-123')
         self.assertEqual(self.apps.get(run['id'])['state'], 'SUBMITTED')
+
+    def test_package_resume_honors_layout_and_new_version_does_not_replace_old_attachment(self):
+        import copy
+        from pypdf import PdfReader
+        profile=copy.deepcopy(PROFILE)
+        profile['document_preferences']={'sections':['skills'],'header_fields':['city'],'alignment':'justify'}
+        write_json(self.home/'profile.json',profile)
+        first=self.apps.prepare(self.key,profile,'layout-package')
+        original=Path(first['resume_path']).read_bytes()
+        content=''.join(page.extract_text() for page in PdfReader(first['resume_path']).pages)
+        self.assertNotIn(profile['personal']['email'],content)
+        self.assertIn(profile['personal']['city'],content)
+        profile['document_preferences']['header_fields']=['email']
+        write_json(self.home/'profile.json',profile)
+        with self.assertRaises(ValueError):self.apps.assert_current(self.apps.get(first['id']))
+        self.assertEqual(Path(first['resume_path']).read_bytes(),original)
+        second=self.apps.prepare(self.key,profile,'layout-package-new')
+        content=''.join(page.extract_text() for page in PdfReader(second['resume_path']).pages)
+        self.assertIn(profile['personal']['email'],content)
+        self.assertNotEqual(first['resume_path'],second['resume_path'])

@@ -20,3 +20,37 @@ document.addEventListener('click', event => {
     entry.querySelectorAll('[role="alert"]').forEach(x => x.remove());
   } else entry.remove();
 });
+
+// The text fields remain a usable fallback when JavaScript is unavailable.
+const sectionList = document.querySelector('[data-document-sections]');
+const sectionValue = document.getElementById('preference_sections');
+function syncDocumentSections() {
+  const rows = [...sectionList.children];
+  sectionValue.value = rows.filter(row => row.querySelector('[data-section-visible]').checked).map(row => row.dataset.section).join(',');
+  rows.forEach((row,index) => {row.querySelector('[data-section-move="up"]').disabled = index === 0; row.querySelector('[data-section-move="down"]').disabled = index === rows.length - 1;});
+}
+if (sectionList && sectionValue) {
+  sectionList.addEventListener('change', syncDocumentSections);
+  sectionList.addEventListener('click', event => {
+    const button = event.target.closest('[data-section-move]'); if (!button) return;
+    const row = button.closest('[data-section]');
+    if (button.dataset.sectionMove === 'up' && row.previousElementSibling) sectionList.insertBefore(row, row.previousElementSibling);
+    else if (button.dataset.sectionMove === 'down' && row.nextElementSibling) sectionList.insertBefore(row.nextElementSibling, row);
+    syncDocumentSections(); button.focus();
+  });
+  sectionValue.addEventListener('input', () => {
+    const names = sectionValue.value.split(',').map(x => x.trim());
+    [...sectionList.children].forEach(row => row.querySelector('[data-section-visible]').checked = names.includes(row.dataset.section));
+    names.forEach(name => {const row = [...sectionList.children].find(x => x.dataset.section === name); if (row) sectionList.append(row);});
+  });
+}
+const headerValue = document.getElementById('preference_header_fields');
+if (headerValue) {
+  document.querySelectorAll('[data-header-field]').forEach(input => input.addEventListener('change', () => {
+    headerValue.value = [...document.querySelectorAll('[data-header-field]:checked')].map(x => x.dataset.headerField).join(',');
+  }));
+  headerValue.addEventListener('input', () => {
+    const names = headerValue.value.split(',').map(x => x.trim());
+    document.querySelectorAll('[data-header-field]').forEach(input => input.checked = names.includes(input.dataset.headerField));
+  });
+}

@@ -51,3 +51,20 @@ class ProfileEditorWebTests(WebCase):
         self.assertIn(b'Original',r.data)
         self.assertNotIn(b'>New<',r.data)
         self.assertEqual(self.client.get('/profiles/not-mine/versions/1/resume.pdf',base_url='https://localhost').status_code,404)
+
+    def test_layout_controls_save_version_and_preview_without_changing_contact_values(self):
+        response = self.post('/profile', {'personal_first_name':'Ada','personal_email':'ada@example.test',
+            'preference_sections':'skills,summary','preference_header_fields':'city,state',
+            'preference_alignment':'justify','save_action':'preview'}, page='/profile')
+        self.assertEqual(response.status_code,200)
+        self.assertIn(b'Open exact PDF',response.data)
+        self.assertNotIn(b'ada@example.test',response.data)
+        saved=read_json(self.home/'profile.json')
+        self.assertEqual(saved['personal']['email'],'ada@example.test')
+        self.assertEqual(saved['document_preferences']['sections'],['skills','summary'])
+        self.assertEqual(saved['document_preferences']['header_fields'],['city','state'])
+        self.assertEqual(saved['document_preferences']['alignment'],'justify')
+        edit=self.client.get('/profile',base_url='https://localhost')
+        self.assertEqual(edit.status_code,200)
+        self.assertIn(b'data-document-sections',edit.data)
+        self.assertIn(b'data-header-field="email"',edit.data)

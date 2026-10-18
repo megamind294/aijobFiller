@@ -67,7 +67,7 @@ def register_settings(app):
     @app.route('/profile', methods=['GET', 'POST'])
     def profile():
         from .workspace import current_home
-        from .profile_forms import parse_profile_form, profile_errors, PERSONAL, SECTIONS, CUSTOM, document_preferences
+        from .profile_forms import parse_profile_form, profile_errors, PERSONAL, SECTIONS, CUSTOM, DOCUMENT_SECTIONS, DOCUMENT_HEADER_FIELDS, document_preferences
         from .profile_vault import ProfileVault
         scoped_home = current_home()
         scoped_path = scoped_home / 'profile.json'
@@ -93,6 +93,8 @@ def register_settings(app):
                     selected = vault.save(candidate, selected['id'] if selected else None,
                                           expected_version=request.form.get('profile_version') or None)
                 flash('Profile saved. ' + ('Your verified facts are ready for resumes.' if candidate['facts_verified'] else 'Draft saved; verify your facts before preparing resumes.'), 'success')
+                if request.form.get('save_action') == 'preview':
+                    return redirect(f"/profiles/{selected['id']}/versions/{selected['version']}/preview")
                 return redirect('/profile?profile_id=' + selected['id'])
             except (ValueError, TypeError, RuntimeError) as exc:
                 flash('Another action is already running. Try again shortly.' if isinstance(exc, RuntimeError) else str(exc), 'error')
@@ -110,6 +112,7 @@ def register_settings(app):
         return render_template('profile.html', profile=candidate, selected=selected, profiles=vault.list(), errors=errors, answer_rows=answer_rows,
                                personal_fields=PERSONAL, repeat_sections=SECTIONS, custom_fields=CUSTOM,
                                preferences=document_preferences(candidate.get('document_preferences')),
+                               document_sections=DOCUMENT_SECTIONS, document_header_fields=DOCUMENT_HEADER_FIELDS,
                                submitted=request.form if request.method == 'POST' else None,
                                uploaded_resume=load_resume(scoped_home))
 

@@ -7,18 +7,25 @@ PERSONAL = ('first_name','last_name','email','phone','city','country','state','a
 SECTIONS = {'experience':('company','role','start','end','bullets'), 'projects':('name','url','bullets'), 'education':('degree','institution','dates','bullets')}
 CUSTOM = ('notice_period','salary_expectation','salary_currency','contract_preference','work_authorization_answer','sponsorship_answer','relocation_answer')
 DOCUMENT_SECTIONS = ('summary','skills','experience','projects','education','languages')
+DOCUMENT_HEADER_FIELDS = ('email','phone','city','state','country','linkedin','github','website')
 
 def document_preferences(value=None):
     if value is None: value = {}
     if not isinstance(value,dict): raise ValueError('Document preferences must be an object.')
-    result = {'template':'classic','font':'Vera','size':'10','spacing':'normal','sections':list(DOCUMENT_SECTIONS)}
+    supported = {'template','font','size','spacing','sections','alignment','header_fields'}
+    if set(value) - supported: raise ValueError('Unsupported document preference.')
+    result = {'template':'classic','font':'Vera','size':'10','spacing':'normal','sections':list(DOCUMENT_SECTIONS),
+              'alignment':'left','header_fields':[field for field in DOCUMENT_HEADER_FIELDS if field != 'state']}
     result.update(value)
-    choices = {'template':('classic','minimal'), 'font':('Vera','Helvetica','Times-Roman','Courier'), 'size':('9','10','11','12'), 'spacing':('compact','normal','relaxed')}
+    choices = {'template':('classic','minimal'), 'font':('Vera','Helvetica','Times-Roman','Courier'), 'size':('9','10','11','12'), 'spacing':('compact','normal','relaxed'), 'alignment':('left','justify')}
     for key, allowed in choices.items():
         if result[key] not in allowed: raise ValueError(f'Choose a supported document {key}.')
     sections = result['sections']
     if not isinstance(sections,list) or any(not isinstance(x,str) or x not in DOCUMENT_SECTIONS for x in sections) or len(sections)!=len(set(sections)):
         raise ValueError('Document sections must be unique supported section names.')
+    fields = result['header_fields']
+    if not isinstance(fields,list) or any(not isinstance(x,str) or x not in DOCUMENT_HEADER_FIELDS for x in fields) or len(fields)!=len(set(fields)):
+        raise ValueError('Header fields must be unique supported contact fields.')
     return result
 
 def parse_profile_form(form, previous):
@@ -57,10 +64,12 @@ def parse_profile_form(form, previous):
             if 'custom_'+key in form: p['custom'][key] = form['custom_'+key].strip()
         if 'custom_json' in form: p['custom'] = json.loads(form['custom_json'])
         prefs = dict(previous.get('document_preferences',{}))
-        for key in ('template','font','size','spacing'):
+        for key in ('template','font','size','spacing','alignment'):
             if 'preference_'+key in form: prefs[key] = form['preference_'+key]
         if 'preference_sections' in form:
             prefs['sections'] = [x.strip() for x in form['preference_sections'].split(',') if x.strip()]
+        if 'preference_header_fields' in form:
+            prefs['header_fields'] = [x.strip() for x in form['preference_header_fields'].split(',') if x.strip()]
         p['document_preferences'] = document_preferences(prefs)
     if not isinstance(p,dict): raise ValueError('Profile must be an object.')
     p['facts_verified'] = form.get('facts_verified') == 'yes' and form.get('save_action') != 'draft'

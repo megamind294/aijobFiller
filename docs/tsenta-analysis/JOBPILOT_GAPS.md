@@ -47,3 +47,13 @@ Relevant source-defined tests include `tests/test_web_discovery.py` (live-source
 - Desktop/mobile screenshots and interactive field/save/retry checks on each implemented primary flow.
 - Provider consent/status and one bounded end-to-end proof per enabled external integration.
 - Real supported-origin execution evidence under explicit user authorization; no mass/live submissions as an audit side effect.
+
+
+## 19 October: document layout repair (verification in progress)
+
+A regression test reproduced that application resumes ignored the profile document preferences while baseline previews honored them. The application path now shares the baseline renderer. The editor adds visible section ordering/hiding, contact-field visibility, left/justified alignment and save-to-version-preview. Source contact fields remain intact; a changed layout changes the profile fingerprint, makes an earlier application package stale and never overwrites its attachment. Four document-level tests and five profile-form tests passed locally. Full Linux, interactive desktop/mobile and deployment results must be confirmed before marking this delivered. Rich-text editing, custom sections and one-page fitting remain separate gaps.
+
+
+### User-requested stop checkpoint — 19 October 2026
+
+Stopped at the user’s request. Implemented layout controls and shared PDF rendering are local; four document tests, five profile-form tests and 17 application tests passed. Synthetic desktop/mobile editor save/download checks passed with no horizontal overflow, and the generated PDF was visually inspected. The full Windows suite was stopped before completion; the remote Linux run was interrupted by resource pressure and has no passing result. The Azure VM was recovered by force restart: SSH, web/Caddy services and public HTTPS 200 confirmed. Production remains on the previous release; the editor changes are not deployed. The old Conda workflow has been replaced locally with isolated GitHub Linux checks, but that new workflow has not run yet. Resume by reviewing this checkpoint, running full regression/CI away from production, and deploying only after verification. No fresh Tsenta access was obtained; historical inspector captures remain the reference.

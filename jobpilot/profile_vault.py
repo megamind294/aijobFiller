@@ -115,15 +115,16 @@ def render_baseline(profile,path,preferences=None):
             pdfmetrics.registerFont(TTFont('JobPilotUnicode',str(Path(__file__).parent/'fonts'/'DejaVuSans.ttf')))
         pref = {**pref, 'font': 'JobPilotUnicode'}
     size = int(pref['size']); leading = size*{'compact':1.15,'normal':1.4,'relaxed':1.7}[pref['spacing']]
-    body = ParagraphStyle('body',fontName=pref['font'],fontSize=size,leading=leading,spaceAfter=5)
-    heading = ParagraphStyle('heading',parent=body,fontSize=size+2,spaceBefore=10,textColor=colors.HexColor('#173d31') if pref['template']=='classic' else colors.black)
+    body = ParagraphStyle('body',fontName=pref['font'],fontSize=size,leading=leading,spaceAfter=5,
+                          alignment=4 if pref['alignment']=='justify' else 0)
+    heading = ParagraphStyle('heading',parent=body,fontSize=size+2,spaceBefore=10,alignment=0,textColor=colors.HexColor('#173d31') if pref['template']=='classic' else colors.black)
     name = ParagraphStyle('name',parent=heading,fontSize=21,leading=25)
     story=[]
     def add(text,style=body):
         if text: story.append(Paragraph(escape(str(text)).replace('\n','<br/>'),style))
     personal = profile.get('personal',{})
     add(' '.join(personal.get(k,'') for k in ('first_name','last_name')),name)
-    add(' | '.join(personal.get(k,'') for k in ('email','phone','city','country','linkedin','github','website') if personal.get(k)))
+    add(' | '.join(personal.get(k,'') for k in pref['header_fields'] if personal.get(k)))
     for section in pref['sections']:
         value = profile.get(section)
         if not value: continue
