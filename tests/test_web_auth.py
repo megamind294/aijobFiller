@@ -119,3 +119,18 @@ class WebAuthTests(WebCase):
             'username': 'admin', 'password': 'correct horse battery staple', 'csrf_token': token},
             headers={'Referer': 'https://localhost/login'})
         self.assertEqual(response.status_code, 302)
+
+    def test_public_stylesheets_are_css_without_login_redirect(self):
+        from html.parser import HTMLParser
+        class Styles(HTMLParser):
+            def __init__(self):super().__init__();self.paths=[]
+            def handle_starttag(self,tag,attrs):
+                attrs=dict(attrs)
+                if tag=='link' and attrs.get('rel')=='stylesheet':self.paths.append(attrs['href'])
+        for path in ('/','/privacy'):
+            parser=Styles();parser.feed(self.client.get(path,base_url='https://localhost').get_data(as_text=True))
+            self.assertTrue(parser.paths)
+            for stylesheet in parser.paths:
+                with self.client.get(stylesheet,base_url='https://localhost') as response:
+                    self.assertEqual(response.status_code,200,(path,stylesheet))
+                    self.assertEqual(response.mimetype,'text/css')

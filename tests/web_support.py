@@ -17,7 +17,9 @@ class WebCase(unittest.TestCase):
         self.app = create_app({
             'TESTING': True, 'JOBPILOT_HOME': str(self.home),
             'SECRET_KEY': 'test-session-secret',
-            'PASSWORD_HASH': generate_password_hash('correct horse battery staple'),
+            # Test credentials avoid paying production hash costs on every fixture login.
+            'PASSWORD_HASH': generate_password_hash(
+                'correct horse battery staple', method='pbkdf2:sha256:1000'),
             'AUTH_VERSION': 'initial',
         })
         self.client = self.app.test_client()
@@ -37,4 +39,3 @@ class WebCase(unittest.TestCase):
 
     def login(self, client=None):
         return self.post('/login', {'username': 'admin', 'password': 'correct horse battery staple'}, client, '/login')
-
