@@ -23,12 +23,18 @@ def register_automation(app):
         service = current_automation()
         from .profile_vault import ProfileVault
         profiles = ProfileVault(current_store().home).list()
+        profile_ready = True
+        try:
+            service.profile('default')
+        except (ValueError, FileNotFoundError, TypeError):
+            profile_ready = False
         try:
             preview, error = service.preview(), ''
         except (ValueError, FileNotFoundError) as exc:
             preview, error = {**service.settings(), 'candidates': [], 'day': '', 'schedule': 'On demand'}, str(exc)
         return render_template('automation.html', lanes=service.lanes(), preview=preview, history=service.history(),
-                               entitled=service.entitled or service.owner, error=error, profiles=profiles)
+                               entitled=service.entitled or service.owner, error=error, profiles=profiles,
+                               profile_ready=profile_ready, job_count=len(current_store().rows()))
 
     @app.post('/auto-apply/lanes')
     @application_action

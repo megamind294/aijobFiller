@@ -43,8 +43,26 @@ class ApplicationWebTests(unittest.TestCase):
     def test_automation_surface_is_default_off(self):
         response = self.client.get('/auto-apply')
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'On demand', response.data)
-        self.assertIn(b'Create lane', response.data)
+        self.assertIn(b'Build your application workflow', response.data)
+        self.assertIn(b'Create your first lane', response.data)
+        self.assertIn(b'Nothing runs in the background', response.data)
+        self.assertIn(b'1 saved job', response.data)
+        self.assertIn(b'Create a lane to preview your saved jobs.', response.data)
+        self.assertIn(b'Save lane', response.data)
+
+    def test_automation_surface_explains_when_workspace_has_no_jobs(self):
+        from jobpilot.automation import Automation
+        from jobpilot.billing import CreditLedger
+        from jobpilot.core import Store
+        store = Store(self.root)
+        Automation(store, CreditLedger(self.root), 'owner', owner=True).save_lane({'name': 'Test lane'})
+        with store.connect() as db:
+            db.execute('DELETE FROM jobs')
+        response = self.client.get('/auto-apply')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'0 saved jobs', response.data)
+        self.assertIn(b'No saved jobs to preview yet.', response.data)
+        self.assertIn(b'href="/browse">Browse jobs</a>', response.data)
 
     def test_unknown_package_is_not_found(self):
         self.assertEqual(self.client.get('/applications/' + 'a' * 32).status_code, 404)
