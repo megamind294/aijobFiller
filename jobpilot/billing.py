@@ -4,7 +4,7 @@ import sqlite3
 import time
 import calendar
 from datetime import date, datetime, timezone
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
@@ -119,7 +119,38 @@ class CreditLedger:
                                 (account_id, stamp)).fetchone()
         return bool(paid or wallet)
 
+    def ensure_trial(self, account_id):
+        """Materialize one lifetime grant for accounts enrolled at creation only."""
+        path = self.path.parent / 'accounts.sqlite3'
+        if not path.exists():
+            return False
+        with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=15)) as accounts:
+            if not accounts.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trial_eligibility'").fetchone():
+                return False
+            eligible = accounts.execute("SELECT 1 FROM trial_eligibility t JOIN accounts a ON a.id=t.account_id WHERE a.id=? AND a.role='customer'", (account_id,)).fetchone()
+        if not eligible:
+            return False
+        with self.connect() as db:
+            db.execute('INSERT OR IGNORE INTO credit_buckets(account_id,grant_key,kind,credits,expires,created) VALUES(?,?,?,?,?,?)',
+                       (account_id, 'new-customer-trial:v1:' + account_id, 'trial', 10, None, time.time()))
+        return True
+
+    def has_workspace_access(self, account_id):
+        self.ensure_trial(account_id)
+        if self.has_paid_access(account_id):
+            return True
+        with self.connect() as db:
+            return bool(db.execute("SELECT 1 FROM credit_buckets WHERE account_id=? AND kind='trial' AND credits>0 AND (expires IS NULL OR expires>?)", (account_id, time.time())).fetchone())
+
+    def trial_status(self, account_id):
+        eligible = self.ensure_trial(account_id)
+        with self.connect() as db:
+            remaining = db.execute("SELECT COALESCE(SUM(credits),0) FROM credit_buckets WHERE account_id=? AND kind='trial'", (account_id,)).fetchone()[0]
+            reserved = db.execute("SELECT COUNT(*) FROM credit_reservations r JOIN credit_buckets b ON b.id=r.bucket_id WHERE r.account_id=? AND b.kind='trial' AND r.state='reserved'", (account_id,)).fetchone()[0]
+        return {'eligible': eligible, 'remaining': max(0, remaining-reserved), 'reserved': reserved, 'total': 10 if eligible else 0}
+
     def balance(self, account_id):
+        self.ensure_trial(account_id)
         self.refresh(account_id)
         with self.connect() as db:
             db.execute('BEGIN')
@@ -128,6 +159,7 @@ class CreditLedger:
         return {'available': max(0, credits - reserved), 'reserved': reserved}
 
     def reserve(self, account_id, reference, day, daily_cap, owner=False):
+        self.ensure_trial(account_id)
         self.refresh(account_id)
         if type(daily_cap) is not int or not 1 <= daily_cap <= 100:
             raise ValueError('Daily cap must be between 1 and 100.')
@@ -151,7 +183,7 @@ class CreditLedger:
             if not owner:
                 row = db.execute("""SELECT b.id FROM credit_buckets b WHERE b.account_id=? AND b.kind!='free' AND (b.expires IS NULL OR b.expires>?)
                     AND b.credits>(SELECT COUNT(*) FROM credit_reservations r WHERE r.bucket_id=b.id AND r.state='reserved')
-                    ORDER BY b.expires IS NULL,b.expires,b.id LIMIT 1""", (account_id, time.time())).fetchone()
+                    ORDER BY CASE WHEN b.kind='trial' THEN 0 ELSE 1 END,b.expires IS NULL,b.expires,b.id LIMIT 1""", (account_id, time.time())).fetchone()
                 if not row:
                     raise ValueError('No available application credits.')
                 bucket_id = row['id']
@@ -163,7 +195,7 @@ class CreditLedger:
                 WHERE r.reference=? AND r.account_id=? AND r.state='reserved' AND b.kind!='free'
                 AND (b.expires IS NULL OR b.expires>?)""", (reference, account_id, time.time())).fetchone()
         if not row:
-            raise ValueError('This application needs a valid reservation of paid credits. Prepare a new review.')
+            raise ValueError('This application needs a valid reservation of paid credits or new-customer trial credits. Prepare a new review.')
 
     def settle(self, account_id, reference, success):
         with self.connect() as db:
@@ -186,7 +218,7 @@ class CreditLedger:
             if row['state'] == 'charged' and row['bucket_id'] is not None:
                 bucket = db.execute('SELECT expires,kind FROM credit_buckets WHERE id=?', (row['bucket_id'],)).fetchone()
                 db.execute('INSERT OR IGNORE INTO credit_buckets(account_id,grant_key,kind,credits,expires,created) VALUES(?,?,?,?,?,?)',
-                           (account_id, 'refund:' + reference, 'free' if bucket['kind']=='free' else 'refund', 1, bucket['expires'], time.time()))
+                           (account_id, 'refund:' + reference, bucket['kind'] if bucket['kind'] in ('free', 'trial') else 'refund', 1, bucket['expires'], time.time()))
             if row['state'] in ('charged', 'reserved'):
                 db.execute("UPDATE credit_reservations SET state='refunded',updated=? WHERE reference=?", (time.time(), reference))
 

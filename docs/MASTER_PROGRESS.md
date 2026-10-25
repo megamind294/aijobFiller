@@ -1,5 +1,14 @@
 # Master product progress — docs/superpowers/plans/2026-10-15-master-product.md
 
+25 October 2026 repair: investigated the reported website failures and deployed
+`repair-20261025-resume`. Real uploaded scan now produces contact, summary, skills,
+two roles, two education entries and four projects instead of contact-only output.
+Live HTTPS reprocessing passed, preserving the saved profile and original PDF.
+Final targeted Linux checks: 120/120; broad Windows run: 296 passed, two skipped.
+See `docs/REPAIR_2026-10-25.md` for test-tree timing, deployment/rollback details
+and remaining blockers. User is handling Stripe configuration. Gmail consent,
+profile verification and real employer adapter coverage are still outstanding.
+
 Approved input: user supplied identical local and GitHub observation documents and explicitly said "now proceed". Preserve native execution preference; use parallel domain work only where files and state are independent.
 
 Baseline: GitHub main e44e53a, feature branch codex/jobpilot-web fast-forwarded to it; pending OCR patch retained. Previous final Windows suite 83 tests: 81 pass, two platform skips. OCR dependencies installed on Ubuntu; not yet deployed. Last deployed code 84edcf3 (resume intake), repository main includes documentation c8b28ae and observations e44e53a.

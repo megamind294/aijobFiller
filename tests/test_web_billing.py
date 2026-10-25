@@ -17,6 +17,9 @@ class BillingRouteTests(unittest.TestCase):
             BILLING_FX_RATE={'pln_per_usd': '4', 'date':'2026-10-15', 'source':'fixture'})
         accounts = Accounts(self.tmp.name)
         self.account = accounts.identity('email','person@example.test', email='person@example.test', verified=True)
+        # Payment regressions use a customer predating the new-account trial.
+        with accounts.connect() as db:
+            db.execute('DELETE FROM trial_eligibility WHERE account_id=?', (self.account['id'],))
         self.app.extensions['jobpilot_accounts'] = accounts
         @self.app.before_request
         def identity():

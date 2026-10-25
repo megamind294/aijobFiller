@@ -35,7 +35,7 @@ def write_json(path, value):
 
 def validate_profile(p):
     if not isinstance(p,dict) or p.get('facts_verified') is not True:
-        raise ValueError('Review profile.json, fill your real details and set facts_verified to true.')
+        raise ValueError('Review your profile, check that the details are accurate, and save it as verified before preparing applications.')
     personal=p.get('personal',{})
     def text(value): return isinstance(value,str) and bool(value.strip())
     def texts(value): return isinstance(value,list) and all(text(v) for v in value)

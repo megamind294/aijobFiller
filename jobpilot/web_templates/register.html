@@ -2,7 +2,7 @@
 <div class="auth-layout">{% include 'auth_story.html' %}
 <section class="auth-card" aria-labelledby="auth-form-title">
 <a class="auth-back" href="/signin">← Back to sign in</a><p class="eyebrow">MAKE YOUR NEXT MOVE</p>
-<h2 id="auth-form-title">Create your account.</h2><p class="auth-description">Start your workspace. Choose a plan after registration; creating an account does not charge you.</p>
+<h2 id="auth-form-title">Create your account.</h2><p class="auth-description">Start with 10 free job applications. No payment is needed to create your account or use your free allowance.</p>
 {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
 <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="email" maxlength="254" required value="{{ request.form.get('email','') }}" placeholder="you@example.com">
@@ -10,5 +10,5 @@
 <p id="password-help" class="field-hint">Use 14–256 characters. A long passphrase works well.</p>
 <label for="confirm-password">Confirm password</label><div class="password-field"><input id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="14" maxlength="256" required><button type="button" class="password-toggle" data-password-toggle="confirm-password" aria-label="Show confirmation password" aria-pressed="false">Show</button></div>
 <button class="button primary full" type="submit">Create account <span aria-hidden="true">↗</span></button></form>
-<p class="auth-account-link">Already have an account? <a href="/signin">Sign in</a></p><p class="auth-footnote">Customer workspace access requires a paid plan or purchased credits.</p>
+<p class="auth-account-link">Already have an account? <a href="/signin">Sign in</a></p><p class="auth-footnote">Your first 10 applications are free, once per new account. Buy a plan or credits when your free allowance is used. Employer form support still applies.</p>
 </section></div>{% endblock %}

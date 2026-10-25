@@ -6,23 +6,23 @@ class RegistrationTests(WebCase):
         return self.post('/register', {'email':email, 'password':password,
                        'confirm_password':password, 'role':'owner'}, page='/register')
 
-    def test_public_registration_creates_customer_and_requires_payment(self):
+    def test_public_registration_creates_customer_with_ten_free_applications(self):
         page = self.client.get('/register', base_url='https://localhost')
         self.assertEqual(page.status_code, 200)
         response = self.register()
-        self.assertIn(b'Payment required', response.data)
+        self.assertIn(b'Your job search', response.data)
         with self.client.session_transaction() as session:
             account = self.app.extensions['jobpilot_accounts'].get(session['account_id'])
         self.assertEqual(account['role'], 'customer')
         self.assertEqual(account['email'], 'new@example.test')
         from jobpilot.billing import CreditLedger
-        self.assertEqual(CreditLedger(self.home).balance(account['id'])['available'], 0)
+        self.assertEqual(CreditLedger(self.home).balance(account['id'])['available'], 10)
 
     def test_customer_can_log_out_and_log_back_in_with_password(self):
         self.register()
         self.post('/logout', page='/billing')
         response = self.post('/signin', {'email':'new@example.test','password':'a secure customer password'}, page='/signin')
-        self.assertIn(b'Payment required', response.data)
+        self.assertIn(b'Your job search', response.data)
 
     def test_weak_password_and_duplicate_email_are_rejected(self):
         self.assertIn(b'14', self.register(password='short').data)

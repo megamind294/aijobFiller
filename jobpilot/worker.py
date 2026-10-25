@@ -98,7 +98,7 @@ class ApplicationWorker:
     def run_once(self):
         from pathlib import Path
         from .service import ProcessLock
-        if self.ledger and self.account_id != 'owner' and not self.ledger.has_paid_access(self.account_id):
+        if self.ledger and self.account_id != 'owner' and not self.ledger.has_workspace_access(self.account_id):
             return False
         try:
             with ProcessLock(Path(self.lock_root) / 'heavy-work.lock'):
@@ -269,7 +269,7 @@ def run_workspaces(root, *, account_id=None, max_tasks=1, run_lanes=False, confi
                         ledger.settle(identifier, 'application:' + recorded['id'], False)
                 except (ValueError, TypeError):
                     pass  # Legacy packages can predate credit reservations.
-        if not owner and not ledger.has_paid_access(identifier):
+        if not owner and not ledger.has_workspace_access(identifier):
             continue
         subscription = ledger.subscription(identifier)
         automation = Automation(store, ledger, identifier, owner=owner,

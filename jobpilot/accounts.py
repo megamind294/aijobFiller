@@ -27,6 +27,8 @@ class Accounts:
                     email TEXT PRIMARY KEY, account_id TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS authentication_attempts (
                     ip TEXT NOT NULL, kind TEXT NOT NULL, created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS trial_eligibility (
+                    account_id TEXT PRIMARY KEY, created REAL NOT NULL);
             ''')
 
     @contextmanager
@@ -65,6 +67,7 @@ class Accounts:
             db.execute('INSERT INTO accounts VALUES(?,?,?,?,?)',
                        (identifier, email, 'customer', secrets.token_hex(24), time.time()))
             db.execute('INSERT INTO password_accounts VALUES(?,?,?)', (email, identifier, hashed))
+            db.execute('INSERT INTO trial_eligibility VALUES(?,?)', (identifier, time.time()))
         # Password credentials do not establish ownership of an external mailbox.
         # Verified Google/email identities must be linked through their own flows.
         return self.get(identifier)
@@ -106,6 +109,7 @@ class Accounts:
             identifier = secrets.token_hex(16)
             db.execute('INSERT INTO accounts VALUES(?,?,?,?,?)', (identifier, email, 'customer', secrets.token_hex(24), time.time()))
             db.execute('INSERT INTO identities VALUES(?,?,?)', (provider, subject, identifier))
+            db.execute('INSERT INTO trial_eligibility VALUES(?,?)', (identifier, time.time()))
         return self.get(identifier)
 
     def link_identity(self, account_id, provider, subject, verified=False):

@@ -101,7 +101,7 @@ def register_billing(app):
         return render_template('billing.html', prices=prices, configuration_error=error, owner=owner,
             paid_access=owner or ledger.has_paid_access(who['id']),
             test_payments=setting('STRIPE_SECRET_KEY').startswith(('sk_test_', 'rk_test_')),
-            balance=ledger.balance(who['id']), subscription=ledger.subscription(who['id']), history=ledger.history(who['id']), attempt=secrets.token_urlsafe(24))
+            balance=ledger.balance(who['id']), trial=ledger.trial_status(who['id']), subscription=ledger.subscription(who['id']), history=ledger.history(who['id']), attempt=secrets.token_urlsafe(24))
 
     @app.post('/billing/checkout')
     def billing_checkout():
