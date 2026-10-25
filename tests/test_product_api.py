@@ -176,7 +176,7 @@ class TransportTests(unittest.TestCase):
         for _ in range(2):
             response = self.client.post('/api/v1/applications/approve_documents', json=approval, headers=headers)
             self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
-        self.assertEqual(ledger.balance(account['id']), {'available': 2, 'reserved': 1})
+        self.assertEqual(ledger.balance(account['id']), {'available': 12, 'reserved': 1})
         queue = TaskQueue(store)
         self.assertEqual([row['action'] for row in queue.rows()], ['fill'])
         apps.record_form(run['id'], {'fields': {'name': {'value': 'Alice Example'}}, 'unanswered_required': [], 'document_hash': run['document_hash']})
@@ -186,7 +186,7 @@ class TransportTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertEqual(sorted(row['action'] for row in queue.rows()), ['fill', 'submit'])
         self.assertTrue(all(row['state'] == 'QUEUED' for row in queue.rows()))
-        self.assertEqual(ledger.balance(account['id']), {'available': 2, 'reserved': 1})
+        self.assertEqual(ledger.balance(account['id']), {'available': 12, 'reserved': 1})
 
 
 if __name__ == '__main__':

@@ -1,4 +1,6 @@
 """Private resume intake; extracted suggestions are never verified facts."""
+import csv
+import io
 import json
 import os
 import re
@@ -12,6 +14,62 @@ import zipfile
 from pathlib import Path
 
 from .core import now, read_json, write_json
+
+
+def ordered_ocr_text(tsv, fallback):
+    """Read a clearly separated two-column page in column order.
+
+    Tesseract's automatic block order can insert sidebar headings before the
+    main column's paragraphs. Only split at a substantial, nearly empty gutter
+    with enough text on both sides; otherwise keep its original reading order.
+    """
+    try:
+        rows = list(csv.DictReader(io.StringIO(tsv), delimiter='\t'))
+        page = next(row for row in rows if row['level'] == '1')
+        width, height = int(page['width']), int(page['height'])
+        words = [row for row in rows if row['level'] == '5' and row.get('text', '').strip()]
+        if not width or not height or len(words) > 20000:
+            return fallback
+        for word in words:
+            for key in ('left', 'top', 'width', 'height'):
+                word[key] = int(word[key])
+        body = [word for word in words if word['top'] >= height * .15]
+        # A bounded histogram of vertical ink occupancy finds persistent gutters.
+        bins = 200
+        occupancy = [0] * bins
+        for word in body:
+            start = max(0, int(word['left'] * bins / width))
+            end = min(bins, int((word['left'] + word['width']) * bins / width) + 1)
+            for i in range(start, end):
+                occupancy[i] += word['height']
+        gaps, start = [], None
+        for i in range(50, 161):
+            if i < 160 and occupancy[i] <= height * .035:
+                if start is None:
+                    start = i
+            elif start is not None:
+                if i - start >= 5:
+                    gaps.append((start, i))
+                start = None
+        for start, end in sorted(gaps, key=lambda pair: pair[1] - pair[0], reverse=True):
+            split = (start + end) * width / (2 * bins)
+            left = [word for word in body if word['left'] + word['width'] / 2 < split]
+            right = [word for word in body if word['left'] + word['width'] / 2 >= split]
+            line_key = lambda word: (word['block_num'], word['par_num'], word['line_num'])
+            if (min(len(left), len(right)) < len(body) * .1 or
+                    min(len({line_key(w) for w in left}), len({line_key(w) for w in right})) < 8):
+                continue
+            def render(group):
+                lines = {}
+                for word in group:
+                    lines.setdefault(line_key(word), []).append(word)
+                ordered = sorted(lines.values(), key=lambda line: (min(w['top'] for w in line), min(w['left'] for w in line)))
+                return '\n'.join(' '.join(w['text'] for w in sorted(line, key=lambda w: w['left'])) for line in ordered)
+            header = [word for word in words if word['top'] < height * .15]
+            return '\n'.join(filter(None, (render(header), render(left), render(right))))
+    except (KeyError, ValueError, TypeError, StopIteration, csv.Error):
+        pass
+    return fallback
 
 
 def ocr_pdf_page(path, page_number, deadline):
@@ -39,11 +97,15 @@ def ocr_pdf_page(path, page_number, deadline):
         if not image.is_file() or image.stat().st_size > 25 * 1024 * 1024:
             raise ValueError('This page exceeds the OCR image limit.')
         output = Path(temporary) / 'recognized'
-        run([engine, str(image), str(output), '-l', 'eng', '--psm', '3'], 20)
+        run([engine, str(image), str(output), '-l', 'eng', '--psm', '3', 'txt', 'tsv'], 20)
         result = output.with_suffix('.txt')
         if not result.is_file() or result.stat().st_size > 500000:
             raise ValueError('This page exceeds the OCR text limit.')
-        return result.read_text(encoding='utf-8').strip()
+        text = result.read_text(encoding='utf-8').strip()
+        positions = output.with_suffix('.tsv')
+        if positions.is_file() and positions.stat().st_size <= 2 * 1024 * 1024:
+            text = ordered_ocr_text(positions.read_text(encoding='utf-8'), text)
+        return text
 
 
 def extract_document(path, details=None):
@@ -147,6 +209,31 @@ def structured_section(lines, section):
         first, second = (values if matches[0] else values[::-1])
         return {'role': first, 'company': second} if section == 'experience' else {'degree': first, 'institution': second}
 
+    if section != 'projects':
+        # Common resume layout: employer + dates, then the role on the next
+        # line. Move only an explicitly recognized identity ahead of its dates.
+        normalized, index = [], 0
+        while index < len(lines):
+            line = lines[index]
+            match = dates.search(line) if not bullet.match(line) else None
+            if match and index + 1 < len(lines):
+                organization = (line[:match.start()] + line[match.end():]).strip(' |,;–—-')
+                following = lines[index + 1]
+                preceding = normalized + ([organization] if organization else [])
+                already_identified = headers(preceding[-2:])
+                if not already_identified and organization and not bullet.match(following) and headers([organization, following]):
+                    normalized.extend([organization, following, match.group(0)])
+                    index += 2
+                    continue
+                if (not already_identified and not organization and normalized and not bullet.match(normalized[-1]) and
+                        not bullet.match(following) and headers([normalized[-1], following])):
+                    normalized.extend([following, match.group(0)])
+                    index += 2
+                    continue
+            normalized.append(line)
+            index += 1
+        lines = normalized
+
     if section == 'projects':
         entries = []
         item = None
@@ -232,6 +319,7 @@ def suggested_profile(text):
     aliases = {'professional summary': 'summary', 'summary': 'summary', 'about me': 'summary',
                'profile': 'summary', 'podsumowanie': 'summary', 'skills': 'skills',
                'technical skills': 'skills', 'technologies': 'skills', 'umiejętności': 'skills',
+               'tools & platforms': 'skills', 'tools and platforms': 'skills', 'soft skills': 'skills',
                'experience': 'experience', 'work experience': 'experience', 'employment': 'experience', 'education': 'education',
                'employment history': 'experience', 'professional experience': 'experience', 'career history': 'experience',
                'work history': 'experience', 'academic background': 'education', 'educational background': 'education',
@@ -243,6 +331,16 @@ def suggested_profile(text):
     current = None
     for line in lines:
         heading = line.casefold().strip(' :•-')
+        if heading not in aliases:
+            # Icons turn into punctuation or short OCR fragments. Accept only
+            # a complete known heading with a short prefix, never prose suffixes.
+            for alias in sorted(aliases, key=len, reverse=True):
+                if heading.endswith(alias):
+                    prefix = heading[:-len(alias)].strip()
+                    original = line[-len(alias):]
+                    if len(prefix) <= 8 and (not any(c.isalnum() for c in prefix) or original.isupper()):
+                        heading = alias
+                        break
         if heading in aliases:
             current = aliases[heading]
         elif current in sections:
@@ -251,7 +349,8 @@ def suggested_profile(text):
     if sections['summary']:
         draft['summary'] = ' '.join(sections['summary'])[:3000]
     if sections['skills']:
-        skills = [part.strip(' •-\t') for part in re.split(r'[,;|\n]', '\n'.join(sections['skills']))]
+        skills = [re.sub(r'^\+\s+', '', part.strip(' •●▪*¢-\t'))
+                  for part in re.split(r'\n|[,;|](?![^()\n]*\))', '\n'.join(sections['skills']))]
         draft['skills'] = list(dict.fromkeys(skill for skill in skills if skill and len(skill) <= 100))[:50]
     for section in ('experience', 'education', 'projects'):
         entries = structured_section(sections[section], section)

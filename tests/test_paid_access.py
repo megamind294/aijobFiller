@@ -8,6 +8,9 @@ class PaidAccessTests(WebCase):
         super().setUp()
         self.account = self.app.extensions['jobpilot_accounts'].identity(
             'email', 'customer@example.test', email='customer@example.test', verified=True)
+        # These regressions describe customers who existed before trial enrollment.
+        with self.app.extensions['jobpilot_accounts'].connect() as db:
+            db.execute('DELETE FROM trial_eligibility WHERE account_id=?', (self.account['id'],))
         self.ledger = CreditLedger(self.home)
         with self.client.session_transaction() as session:
             session['account_id'] = self.account['id']

@@ -8,6 +8,17 @@ from pathlib import Path
 
 
 class PaymentTests(unittest.TestCase):
+    def test_payment_event_preserves_test_mode_for_owner_reporting(self):
+        from jobpilot.billing import CreditLedger
+        from jobpilot.payment_events import apply_event
+        with tempfile.TemporaryDirectory() as temporary:
+            ledger = CreditLedger(temporary)
+            apply_event(ledger, {'id':'evt_mode', 'type':'fixture', 'livemode':False,
+                                'data':{'object':{'id':'object_mode'}}}, lambda account:False)
+            with ledger.connect() as db:
+                payload = json.loads(db.execute('SELECT payload FROM billing_events').fetchone()[0])
+            self.assertIs(payload['livemode'], False)
+
     def test_signature_is_required_and_timestamp_bounded(self):
         from jobpilot.payment_events import verify_event
         body = b'{"id":"event1","type":"test"}'

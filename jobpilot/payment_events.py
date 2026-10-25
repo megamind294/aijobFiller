@@ -113,6 +113,7 @@ def apply_event(ledger, event, account_exists):
                     db.execute('UPDATE subscriptions SET status=?,cycle_end=COALESCE(?,cycle_end) WHERE subscription_id=?', (status, obj.get('current_period_end'), sub_id))
                 db.execute('INSERT INTO provider_versions VALUES(?,?,?) ON CONFLICT(object_id) DO UPDATE SET created=excluded.created,terminal=excluded.terminal', (sub_id, stamp, int(terminal)))
         db.execute('INSERT INTO billing_events VALUES(?,?,?,?,?)',
-                   (event['id'], account, kind, json.dumps({'provider_object': obj.get('id', '')}), time.time()))
+                   (event['id'], account, kind, json.dumps({'provider_object': obj.get('id', ''),
+                    'livemode': event.get('livemode', obj.get('livemode'))}), time.time()))
     if account:
         ledger.refresh(account)

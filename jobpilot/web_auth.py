@@ -97,7 +97,7 @@ def init_auth(app):
         if request.endpoint not in ('logout', 'billing', 'billing_checkout', 'billing_portal', 'settings', 'password'):
             from .billing import CreditLedger
             account = g.jobpilot_account
-            if account.get('role') != 'owner' and not CreditLedger(app.config['JOBPILOT_HOME']).has_paid_access(account['id']):
+            if account.get('role') != 'owner' and not CreditLedger(app.config['JOBPILOT_HOME']).has_workspace_access(account['id']):
                 return redirect(url_for('billing'))
 
     @app.route('/login', methods=['GET', 'POST'])

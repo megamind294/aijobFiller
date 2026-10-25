@@ -49,11 +49,13 @@ def create_app(config=None):
         from .billing import CreditLedger
         account = getattr(g, 'jobpilot_account', {'id': 'owner', 'role': 'owner', 'email': ''})
         credits = {'available': 0, 'reserved': 0}
+        trial = {'eligible': False, 'remaining': 0, 'reserved': 0}
         if account.get('role') != 'owner':
             ledger = CreditLedger(home)
             credits = ledger.balance(account['id'])
+            trial = ledger.trial_status(account['id'])
         initials = 'JP' if account.get('role') == 'owner' else (account.get('email', '')[:2].upper() or 'ME')
-        return {'workspace_account': account, 'workspace_credits': credits, 'workspace_initials': initials}
+        return {'workspace_account': account, 'workspace_credits': credits, 'workspace_trial': trial, 'workspace_initials': initials}
 
     @app.before_request
     def verify_browser_origin():
@@ -160,6 +162,8 @@ def create_app(config=None):
     register_automation(app)
     from .workspace_pages import register_workspace_pages
     register_workspace_pages(app)
+    from .customer_admin import register_customer_admin
+    register_customer_admin(app)
     from .assistant import register_assistant
     register_assistant(app)
     from .web_auth import PROTOCOL_ENDPOINTS
